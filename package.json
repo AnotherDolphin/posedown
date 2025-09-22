@@ -32,6 +32,7 @@
 		"vite": "^7.0.4"
 	},
 	"dependencies": {
+		"firebase": "^12.3.0",
 		"marked": "^16.3.0"
 	}
 }
