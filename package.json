@@ -13,7 +13,7 @@
 		"format": "prettier --write .",
 		"lint": "prettier --check .",
 		"emulate": "firebase emulators:start --only firestore --project blog-d09a0",
-		"test:unit": "vitest run",
+		"test:intg": "vitest run",
 		"test:unit:watch": "vitest",
 		"test:e2e": "playwright test",
 		"test": "npm run test:unit && npm run test:e2e"
