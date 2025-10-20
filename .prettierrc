@@ -13,5 +13,6 @@
 		}
 	],
 	"tailwindStylesheet": "./src/app.css",
-	"semi": false
+	"semi": false,
+	"arrowParens": "avoid"
 }
