@@ -51,6 +51,9 @@
 		"firebase": "^12.3.0",
 		"jsdom": "^27.0.0",
 		"marked": "^16.3.0",
-		"mode-watcher": "^1.1.0"
+		"mode-watcher": "^1.1.0",
+		"remark-parse": "^11.0.0",
+		"remark-rehype": "^11.1.2",
+		"unist-util-visit": "^5.0.0"
 	}
 }
