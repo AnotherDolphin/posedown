@@ -26,7 +26,7 @@
 		},
 		{
 			name: 'Complex Nesting',
-			content: 'Text with **bold and _nested italic_ and more bold** here.'
+			content: 'Text with **bold and _nested italic_ and more bold** here and **here**.'
 		},
 		{
 			name: 'Multiple Paragraphs',
