@@ -10,8 +10,7 @@ export default defineConfig({
 			'firebase/auth',
 			'firebase/firestore',
 			'firebase/storage'
-		],
-		exclude: ['@lucide/svelte']
+		]
 	},
 	ssr: {
 		noExternal: ['bits-ui']
