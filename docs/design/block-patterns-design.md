@@ -275,6 +275,57 @@ private onInput = (e: InputEvent) => {
 - Special handling for `<pre><code>` (BR inside CODE)
 - Critical for contenteditable usability
 
+### Nested List Pattern Blocking
+
+**Location**: `src/lib/rich/utils/block-patterns.ts` (lines 43-63)
+
+The `isBlockPattern()` function has special logic to prevent list pattern matching inside list items.
+
+**Implementation**:
+```typescript
+export function isBlockPattern(content: string, node: Node | HTMLElement): boolean {
+    const matches = Object.values(blockPatterns).some(pattern => pattern.test(content))
+    if (!matches) return false
+
+    const isInList = node instanceof Element ? node.closest('li') : node.parentElement?.closest('li')
+    if (!isInList) return matches
+
+    const isListPattern = matchesBlockPattern(content, 'listItem')
+    if (!isListPattern) return matches
+
+    // prevent any list pattern matching inside LIs for now
+    // #issue: this disables nested lists detection
+    return false
+}
+```
+
+**Why This Exists**:
+- **Problem**: Typing "- " inside a list item would trigger pattern detection → markdown conversion → new list creation
+- **Bug**: This creates a circular transformation loop (new HTML contains "- " → triggers pattern again)
+- **Solution**: Explicitly return `false` when detecting list patterns inside `<li>` elements
+
+**Example of Blocked Behavior**:
+```html
+<!-- Current State -->
+<ul>
+  <li>First item|</li>
+</ul>
+
+<!-- User types: " - nested" -->
+<!-- WITHOUT blocking: Would trigger infinite transformation loop -->
+<!-- WITH blocking: Text "- nested" is inserted literally -->
+
+<ul>
+  <li>First item - nested|</li>
+</ul>
+```
+
+**How This Differs from "Known Limitations"**:
+The "Known Limitations" section (line 449) describes nested lists as "deferred," implying they're a planned feature. This section explains the **active protective code** that prevents a critical bug. The blocking is intentional defensive programming, not missing functionality.
+
+**Future Work**:
+When implementing nested lists (via Tab/Shift+Tab), this blocking code **must remain** to prevent typing-based circular bugs. Nested list creation should only happen through explicit keyboard commands (Tab indentation), not by typing list patterns inside list items.
+
 ## Pattern Examples
 
 ### Example 1: Heading Creation
