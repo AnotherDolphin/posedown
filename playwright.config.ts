@@ -5,7 +5,7 @@ export default defineConfig({
 		// command: 'npm run build && npm run preview',
 		// port: 4173
 		command: 'npm run dev',
-		port: 5173,
+		port: 5175,
 		reuseExistingServer: true
 	},
 	testDir: 'tests/e2e'
