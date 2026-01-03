@@ -5,8 +5,8 @@ export default defineConfig({
 		// command: 'npm run build && npm run preview',
 		// port: 4173
 		command: 'npm run dev',
-		port: 5175,
+		port: 5173,
 		reuseExistingServer: true
 	},
-	testDir: 'tests/e2e'
+	testDir: 'src/lib/rich/tests/e2e'
 })
