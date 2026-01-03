@@ -10,9 +10,9 @@ import type { RootContent as MdastContent, Nodes as MdastNodes } from 'mdast'
 import type { Nodes as HastNodes, RootContent as HastRootContent } from 'hast'
 import { toDom } from 'hast-util-to-dom'
 import { remove } from 'unist-util-remove'
-import { headingHandler, ensureBlockHeight } from './utils/block-marks'
+import { headingHandler, ensureBlockHeight } from '../utils/block-marks'
 import DOMPurify from 'dompurify'
-import { extractPatternPrefix } from './utils/block-patterns'
+import { extractPatternPrefix } from '../utils/block-patterns'
 
 // ================================= general plugin integs. =================================
 

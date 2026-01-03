@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { renderWithAttributes } from '$lib/utils/marked/attributes'
 	import { RichEditorState } from './richEditorState.svelte'
-	import { markdownToHtml, markdownToHast, parseMarkdownToMdast } from './ast-utils'
+	import { markdownToHtml, markdownToHast, parseMarkdownToMdast } from '../core/transforms/ast-utils'
 
 	// Configure marked to use attribute rendering
 	renderWithAttributes()

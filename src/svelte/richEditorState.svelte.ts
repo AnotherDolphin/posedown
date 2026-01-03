@@ -5,9 +5,9 @@ import {
 	htmlToMarkdown,
 	htmlBlockToMarkdown,
 	domFragmentToMarkdown
-} from './ast-utils'
-import { findFirstMarkdownMatch } from './utils/inline-patterns'
-import { isBlockPattern, isListPattern } from './utils/block-patterns'
+} from '../core/transforms/ast-utils'
+import { findFirstMarkdownMatch } from '../core/utils/inline-patterns'
+import { isBlockPattern, isListPattern } from '../core/utils/block-patterns'
 import {
 	preserveOneChild,
 	isStyledTagName,
@@ -25,9 +25,9 @@ import {
 	smartReplaceChildren,
 	endsWithValidDelimiter,
 	isEditorEmpty
-} from './utils/dom'
-import { setCaretAtEnd, setCaretAfterExit, setCaretAfter } from './utils/selection'
-import { EditorHistory } from './history'
+} from '../core/utils/dom'
+import { setCaretAtEnd, setCaretAfterExit, setCaretAfter } from '../core/utils/selection'
+import { EditorHistory } from '../core/history'
 
 // handle, enter on list, manually entering md syntax
 // reason for observer reinteg. node level tree updates,

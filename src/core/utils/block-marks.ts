@@ -1,4 +1,4 @@
-import { markdownToHtml, stringifyMdastToMarkdown } from '../ast-utils'
+import { markdownToHtml, stringifyMdastToMarkdown } from '../transforms/ast-utils'
 import { defaultHandlers, toHast, type Handler } from 'mdast-util-to-hast'
 import { getMainParentBlock, insertAfter } from './dom'
 

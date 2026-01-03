@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { configureMarkedTokenizer } from '../../post/[slug]/edit/marked-utils'
 	import TextBlockEditor from '../../post/[slug]/edit/components/TextBlockEditor.svelte'
-	import RichEditor from '$lib/rich/RichEditor.svelte'
+	import { RichEditor } from '$lib/rich'
 
 	// Configure marked the same way the editor does
 	configureMarkedTokenizer()

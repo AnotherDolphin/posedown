@@ -1,4 +1,4 @@
-import { markdownToDomFragment } from '../ast-utils'
+import { markdownToDomFragment } from '../transforms/ast-utils'
 import { isBlockTagName } from './block-marks'
 import { findFirstMarkdownMatch } from './inline-patterns'
 import {
