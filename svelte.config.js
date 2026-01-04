@@ -3,15 +3,26 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	// Consult https://svelte.dev/docs/kit/integrations
-	// for more information about preprocessors
 	preprocess: vitePreprocess(),
 
 	kit: {
-		// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-		// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
 		adapter: adapter()
+	},
+
+	package: {
+		// Export subdirectories
+		exports: (filepath) => {
+			// Export core/ and svelte/ subdirectories
+			if (filepath.startsWith('core/')) return true;
+			if (filepath.startsWith('svelte/')) return true;
+			// Export root index
+			return filepath === 'index.ts';
+		},
+
+		// Exclude test files
+		files: (filepath) => {
+			return !filepath.includes('.test.') && !filepath.includes('.spec.');
+		}
 	}
 };
 
