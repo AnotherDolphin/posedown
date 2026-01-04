@@ -58,6 +58,9 @@ export class RichEditorState {
 		$effect(() => {
 			if (!this.editableRef) return
 
+			// ciritical backup override if style missing
+			this.editableRef.style.whiteSpace = 'break-spaces'
+
 			// Save initial state to history
 			this.history.push(this.editableRef)
 

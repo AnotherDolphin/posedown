@@ -105,6 +105,7 @@
 		min-height: 200px;
 		min-width: 0;
 		box-sizing: border-box;
+		white-space: break-spaces;
 	}
 
 	.ast {
