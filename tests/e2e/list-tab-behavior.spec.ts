@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const EDITOR_URL = '/test/text-block-editor'
+const EDITOR_URL = '/test'
 
 test.describe.configure({ mode: 'serial' })
 

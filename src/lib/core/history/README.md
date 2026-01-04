@@ -127,7 +127,7 @@ private onSelectionChange = (e: Event) => {
 ## Manual Testing Guide
 
 1. **Start dev server**: `npm run dev`
-2. **Navigate to**: `http://localhost:5173/test/text-block-editor`
+2. **Navigate to**: `http://localhost:5173/test`
 3. **Click** into the contenteditable article area
 
 ### Test 1: Undo/Redo Transformation

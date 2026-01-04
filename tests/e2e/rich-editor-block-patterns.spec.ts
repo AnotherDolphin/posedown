@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const EDITOR_URL = '/test/text-block-editor'
+const EDITOR_URL = '/test'
 
 // Helper to clear editor content
 async function clearEditor(page: Page) {

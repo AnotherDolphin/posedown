@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const EDITOR_URL = '/test/text-block-editor'
+const EDITOR_URL = '/test'
 
 test.describe('Rich Editor - Sync Back to Markdown Bug', () => {
 	test.beforeEach(async ({ page }) => {
