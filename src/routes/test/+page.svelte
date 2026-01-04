@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { RichEditor } from '../../svelte'
+	import { RichEditor } from '$lib/svelte'
 
 	// Example from the plan document
 	let initialContent = 'This is **bold and _italic_** text'
