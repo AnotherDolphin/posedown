@@ -1,10 +1,6 @@
 <script lang="ts">
-	import { renderWithAttributes } from '$lib/utils/marked/attributes'
 	import { RichEditorState } from './richEditorState.svelte'
 	import { markdownToHtml, markdownToHast, parseMarkdownToMdast } from '../core/transforms/ast-utils'
-
-	// Configure marked to use attribute rendering
-	renderWithAttributes()
 
 	let {
 		content = '',
@@ -47,50 +43,135 @@
 	}
 </script>
 
-<div class="space-y-4">
-	<!-- Test button: Convert markdown → HTML -->
-	<button
-		onclick={updateFromMarkdown}
-		class="rounded border border-primary bg-primary/10 px-4 py-2 text-sm font-medium hover:bg-primary/20"
-	>
+<style>
+	.container {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.button {
+		padding: 0.5rem 1rem;
+		border: 1px solid #999;
+		background: #f0f0f0;
+		cursor: pointer;
+		width: fit-content;
+	}
+
+	.button:hover {
+		background: #e0e0e0;
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	textarea {
+		width: 100%;
+		padding: 0.5rem;
+		border: 1px solid #ccc;
+		font-family: monospace;
+		resize: vertical;
+		box-sizing: border-box;
+	}
+
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		min-width: 0;
+	}
+
+	.preview {
+		overflow: auto;
+		padding: 0.5rem;
+		border: 1px solid #ccc;
+		background: #f9f9f9;
+		font-size: 0.75rem;
+		min-width: 0;
+	}
+
+	.preview pre {
+		margin: 0;
+		white-space: pre-wrap;
+		word-wrap: break-word;
+	}
+
+	.editor {
+		padding: 0.5rem;
+		border: 1px solid #ccc;
+		min-height: 200px;
+		min-width: 0;
+		box-sizing: border-box;
+	}
+
+	.ast {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.ast h3 {
+		font-size: 0.875rem;
+		margin: 0;
+	}
+
+	.ast-content {
+		overflow: auto;
+		padding: 0.5rem;
+		border: 1px solid #ccc;
+		background: #f5f5f5;
+		font-size: 0.75rem;
+		min-width: 0;
+	}
+
+	.ast-content pre {
+		margin: 0;
+	}
+</style>
+
+<div class="container">
+	<button onclick={updateFromMarkdown} class="button">
 		Test: Update ContentEditable from Markdown
 	</button>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid">
 		<textarea
 			value={editorState.rawMd}
 			oninput={handleInput}
-			class="w-full rounded border bg-background p-3 font-mono text-sm"
 			rows="20"
 		></textarea>
 
-		<div class="space-y-4">
-			<div class="overflow-x-auto rounded border bg-card p-3">
-				<pre class="text-xs">{editorState.editableRef?.innerHTML}</pre>
+		<div class="panel">
+			<div class="preview">
+				<pre>{editorState.editableRef?.innerHTML}</pre>
 			</div>
 
 			<div
 				bind:this={editorState.editableRef}
 				role="article"
 				contenteditable={editorState.editableRef ? "true": "false"}
-				class="prose prose-sm max-w-none rounded border p-3 whitespace-break-spaces dark:prose-invert"
+				class="editor"
 			>
 				{@html editorState.html}
 			</div>
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-		<div class="space-y-2">
-			<h3 class="text-sm font-semibold">MDAST (Markdown AST)</h3>
-			<div class="overflow-x-auto rounded border bg-muted/50 p-3">
-				<pre class="text-xs">{JSON.stringify(mdast, null, 2)}</pre>
+	<div class="grid">
+		<div class="ast">
+			<h3>MDAST (Markdown AST)</h3>
+			<div class="ast-content">
+				<pre>{JSON.stringify(mdast, null, 2)}</pre>
 			</div>
 		</div>
-		<div class="space-y-2">
-			<h3 class="text-sm font-semibold">HAST (HTML AST)</h3>
-			<div class="overflow-x-auto rounded border bg-muted/50 p-3">
-				<pre class="text-xs">{JSON.stringify(hast, null, 2)}</pre>
+		<div class="ast">
+			<h3>HAST (HTML AST)</h3>
+			<div class="ast-content">
+				<pre>{JSON.stringify(hast, null, 2)}</pre>
 			</div>
 		</div>
 	</div>

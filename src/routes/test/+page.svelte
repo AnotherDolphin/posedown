@@ -1,10 +1,5 @@
 <script lang="ts">
-	import { configureMarkedTokenizer } from '../../post/[slug]/edit/marked-utils'
-	import TextBlockEditor from '../../post/[slug]/edit/components/TextBlockEditor.svelte'
-	import { RichEditor } from '$lib/rich'
-
-	// Configure marked the same way the editor does
-	configureMarkedTokenizer()
+	import { RichEditor } from '../../svelte'
 
 	// Example from the plan document
 	let initialContent = 'This is **bold and _italic_** text'
@@ -43,18 +38,53 @@
 	}
 </script>
 
-<div class="mx-auto max-w-7xl space-y-6 p-6">
-	<div class="flex gap-2">
+<style>
+	.container {
+		max-width: 1200px;
+		margin: 0 auto;
+		padding: 2rem;
+		font-family: system-ui, -apple-system, sans-serif;
+	}
+
+	h1 {
+		font-size: 2rem;
+		font-weight: 700;
+		margin-bottom: 1.5rem;
+		color: #1f2937;
+	}
+
+	.buttons {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+		flex-wrap: wrap;
+	}
+
+	button {
+		padding: 0.5rem 1rem;
+		border: 1px solid #d1d5db;
+		border-radius: 0.375rem;
+		background: white;
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: background-color 0.2s;
+	}
+
+	button:hover {
+		background-color: #f3f4f6;
+	}
+</style>
+
+<div class="container">
+	<h1>posedown - Rich Text Editor Test</h1>
+
+	<div class="buttons">
 		{#each examples as example}
-			<button
-				onclick={() => loadExample(example.content)}
-				class="rounded border px-3 py-1 text-sm hover:bg-muted"
-			>
+			<button onclick={() => loadExample(example.content)}>
 				{example.name}
 			</button>
 		{/each}
 	</div>
 
-	<!-- <TextBlockEditor {content} onUpdate={handleUpdate} /> -->
-	 <RichEditor {content} onUpdate={handleUpdate} />
+	<RichEditor {content} onUpdate={handleUpdate} />
 </div>
