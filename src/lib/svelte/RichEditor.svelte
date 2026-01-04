@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { RichEditorState } from './richEditorState.svelte'
-	import { markdownToHtml, markdownToHast, parseMarkdownToMdast } from '../core/transforms/ast-utils'
+	import { markdownToHtml, markdownToHast, parseMarkdownToMdast } from '$lib/core/transforms/ast-utils'
 
 	let {
 		content = '',

@@ -5,9 +5,9 @@ import {
 	htmlToMarkdown,
 	htmlBlockToMarkdown,
 	domFragmentToMarkdown
-} from '../core/transforms/ast-utils'
-import { findFirstMarkdownMatch } from '../core/utils/inline-patterns'
-import { isBlockPattern, isListPattern } from '../core/utils/block-patterns'
+} from '$lib/core/transforms/ast-utils'
+import { findFirstMarkdownMatch } from '$lib/core/utils/inline-patterns'
+import { isBlockPattern, isListPattern } from '$lib/core/utils/block-patterns'
 import {
 	preserveOneChild,
 	isStyledTagName,
