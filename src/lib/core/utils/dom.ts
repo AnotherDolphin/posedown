@@ -31,12 +31,23 @@ export const deriveChildNodeId = (node: Node): string | null => {
 }
 
 /**
- * List of HTML tag names that represent styled/formatted inline elements
+ * Inline formatted element tag names that have markdown syntax equivalents
+ * Only includes markdown-supported tags:
+ * - STRONG (**text**), EM (*text*), CODE (`code`), S/DEL (~~text~~)
+ * - Excludes U (underline) which is HTML-only, not standard markdown
  */
-const STYLED_TAG_NAMES = ['STRONG', 'EM', 'CODE', 'DEL', 'U'] as const
-export const isStyledTagName = (tagName: string): tagName is (typeof STYLED_TAG_NAMES)[number] => {
-	return (STYLED_TAG_NAMES as readonly string[]).includes(tagName)
+export const INLINE_FORMATTED_TAGS = ['STRONG', 'EM', 'CODE', 'S', 'DEL'] as const
+export const isStyledTagName = (tagName: string): tagName is (typeof INLINE_FORMATTED_TAGS)[number] => {
+	return (INLINE_FORMATTED_TAGS as readonly string[]).includes(tagName)
 }
+
+/**
+ * Block formatted element tag names that have visible markdown prefix marks
+ * Subset of BLOCK_TAG_NAMES - only elements with markdown delimiters to display:
+ * - H1-H6 (have # marks), BLOCKQUOTE (has >), LI (has - or 1.)
+ * - Excluded: P (no marks to show), PRE (code blocks handled separately), UL/OL (containers, LI has the mark)
+ */
+export const BLOCK_FORMATTED_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'LI'] as const
 
 /**
  * Prevents the contentEditable from becoming empty or having a non-P block as the only element
@@ -85,7 +96,7 @@ const getStyledAncestor = (node: Node, boundary?: Element): Element | null => {
 	while (current && current !== boundary) {
 		if (current.nodeType === Node.ELEMENT_NODE) {
 			const element = current as Element
-			if (STYLED_TAG_NAMES.includes(element.tagName as any)) {
+			if (INLINE_FORMATTED_TAGS.includes(element.tagName as any)) {
 				return element
 			}
 		}

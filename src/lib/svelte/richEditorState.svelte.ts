@@ -28,6 +28,7 @@ import {
 } from '../core/utils/dom'
 import { setCaretAtEnd, setCaretAfterExit, setCaretAfter } from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
+import { FocusMarkManager } from '../core/utils/focus-mark-manager'
 
 // handle, enter on list, manually entering md syntax
 // reason for observer reinteg. node level tree updates,
@@ -42,6 +43,7 @@ export class RichEditorState {
 	private syncTimer: ReturnType<typeof setTimeout> | null = null
 	marks: Array<Element | Node> | null = $state(null) // only a state for debugging with $inspect
 	private history = new EditorHistory({ debug: true })
+	private focusMarkManager = new FocusMarkManager()
 
 	constructor(markdown: string) {
 		this.rawMd = markdown
@@ -195,12 +197,27 @@ export class RichEditorState {
 		let block = getMainParentBlock(node, this.editableRef)
 		if (!block) return
 
+		// TODO: Strip .pd-focus-mark spans before pattern detection and markdown conversion
+		// This prevents focus mark spans from being treated as content during transformation.
+		//
+		// Implementation:
+		//   const cleanBlock = block.cloneNode(true) as HTMLElement
+		//   cleanBlock.querySelectorAll('.pd-focus-mark').forEach(mark => mark.remove())
+		//   cleanBlock.normalize()  // Merge fragmented text nodes
+		//
+		// Then use cleanBlock for pattern detection and markdown conversion below
+
 		// Check for block patterns, with special handling for list patterns inside LIs
 		const hasBlockPattern = isBlockPattern(block.innerText, node)
 		const hasInlinePattern = findFirstMarkdownMatch(block.textContent || '')
 
 		if (hasBlockPattern || hasInlinePattern) {
+			// TODO: Use cleanBlock here instead of block
 			const contentInMd = htmlBlockToMarkdown(block)
+
+			// NOTE: When user edits a focus mark span (e.g., changes ** to *),
+			// this will parse invalid markdown (e.g., "*text**") and automatically
+			// unwrap the formatting. No special "unwrap" logic needed!
 
 			// Parse back to DOM
 			const { fragment, isInline } = markdownToDomFragment(contentInMd)
@@ -361,40 +378,26 @@ export class RichEditorState {
 		this.marks = null
 	}
 
-	// create marks if caret at end of a dom node
+	// Handle selection changes for both FocusMarks and exit-styled-element tracking
 	private onSelectionChange = (e: Event) => {
-		if (this.marks !== null) this.marks = null // clear on displacement
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode) return
+		if (!this.editableRef?.contains(selection.anchorNode)) return
+
+		// ===== FocusMarks: Show markdown delimiters when cursor enters formatted elements =====
+		// This injects/ejects .pd-focus-mark spans dynamically based on cursor position
+		this.focusMarkManager.update(selection, this.editableRef)
+
+		// ===== Exit Marks: Track styled elements where caret is at END (for exit-on-type) =====
+		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements
+		if (this.marks !== null) this.marks = null // clear on displacement
+
 		let node = selection.anchorNode
-		if (!this.editableRef?.contains(node)) return
-
-		console.log(node.parentElement)
-		const parentEl = node.parentElement
-		// if parent element is formatted, show focus marks
-
-		// 1. get raw md
-		const markedRawTxt = domFragmentToMarkdown(parentEl)
-		// 2. construct mark span(s)
-		const span = document.createElement('span') // 2 spans if inline
-		span.innerText = markedRawTxt[0]
-		span.setAttribute('data-pd-mark', 'this.focusMarkRef')
-
-		// 3. insert (on one or two sides)
-		insertAfter(span, parentEl)
-		parentEl?.insertBefore(span, node)
-		
-		// 4. if focusMarkRef !== parentEl, remove all spans (can be step 0)
-		// 5. update focusMarkRef state
-		
-
-		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length)
+		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length) {
 			return
+		}
 
-		// handles emptied text nodes; avoids caret style carrying if all stylized text is removed
-		// if (node.nodeValue?.trim() == '') this.marks = []
-
-		// find and mark the outmost parent ending at caret (to be exited on keydown)
+		// Find and mark the outmost parent ending at caret (to be exited on keydown)
 		let parent = node.parentNode
 		while (parent && node == parent.lastChild && isStyledTagName(parent.nodeName)) {
 			this.marks = this.marks ? [...this.marks, parent] : [parent]
