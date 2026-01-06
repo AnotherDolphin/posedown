@@ -369,6 +369,25 @@ export class RichEditorState {
 		let node = selection.anchorNode
 		if (!this.editableRef?.contains(node)) return
 
+		console.log(node.parentElement)
+		const parentEl = node.parentElement
+		// if parent element is formatted, show focus marks
+
+		// 1. get raw md
+		const markedRawTxt = domFragmentToMarkdown(parentEl)
+		// 2. construct mark span(s)
+		const span = document.createElement('span') // 2 spans if inline
+		span.innerText = markedRawTxt[0]
+		span.setAttribute('data-pd-mark', 'this.focusMarkRef')
+
+		// 3. insert (on one or two sides)
+		insertAfter(span, parentEl)
+		parentEl?.insertBefore(span, node)
+		
+		// 4. if focusMarkRef !== parentEl, remove all spans (can be step 0)
+		// 5. update focusMarkRef state
+		
+
 		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length)
 			return
 

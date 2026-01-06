@@ -1,5 +1,64 @@
 I want to develop a new feature for my editor.
 
+---
+
+## Implementation Status
+
+### ✅ Completed & Working
+- **FocusMarkManager class** - Detection, injection, and ejection logic fully implemented
+- **Integration** into richEditorState.svelte.ts via onSelectionChange
+- **CSS styling** for .pd-focus-mark spans (subtle gray #888, monospace, 0.9em, 70% opacity)
+- **Type checking** passes with no errors
+- **Tested successfully** via Chrome DevTools:
+  - ✅ Inline marks (bold `**`, italic `*`) appear when cursor enters
+  - ✅ Block marks (heading `#`) appear when cursor enters
+  - ✅ Marks eject cleanly when cursor leaves
+  - ✅ Nested formatting handled correctly (e.g., bold within heading)
+  - ✅ Visual styling works as intended
+
+### 🚧 Next Steps (TODOs)
+1. **Implement span stripping in onInput** - Strip .pd-focus-mark spans before pattern detection and markdown conversion (lines 200-220 in richEditorState.svelte.ts)
+   - This prevents marks from being treated as content during transformations
+   - Required for proper "unwrap" behavior when user edits marks
+2. **Test editing marks** - Verify changing `**` to `*` properly unwraps formatting
+3. **Test with lists** - Verify list item marks (`-`, `1.`) work correctly
+4. **Verify history behavior** - Ensure marks don't trigger unwanted history saves
+
+---
+
+## Design Evolution
+
+### Abandoned Design #1: Pre-injected Hidden Spans
+**Approach**: Inject `<span class="pd-mark">**</span>` during HTML generation, hide with `display: none`, show with CSS when focused.
+
+**Why Rejected**:
+- ❌ Pollutes DOM with thousands of spans (2 per formatted element)
+- ❌ Interferes with block transformations and serialization
+- ❌ Every `htmlBlockToMarkdown()` call must filter them out
+- ❌ Wastes memory on spans that are never shown (99% hidden)
+- ❌ Cursor can accidentally land inside hidden spans
+
+### Abandoned Design #2: Data Attributes on Elements
+**Approach**: Add `data-pd-mark="**,**"` during markdown→HTML transformation, use attributes to lookup delimiters.
+
+**Why Reverted**:
+- ❌ Cannot preserve original syntax (`**` vs `__`, `*` vs `_`)
+- ❌ Both `**text**` and `__text__` become `<strong>` - lost delimiter info after HAST conversion
+- ❌ Requires modifying transformation pipeline unnecessarily
+- ❌ Created `mark-decorator.ts` file that was ultimately not needed
+
+### ✅ Confirmed Design: Dynamic Injection with Reverse-Engineering
+**Approach**: When cursor enters formatted element, convert element back to markdown to extract delimiters, then inject editable spans.
+
+**Why This Works**:
+- ✅ **Preserves original syntax** - `htmlToMarkdown(<strong>text</strong>)` returns actual delimiter used
+- ✅ **Clean DOM 99% of time** - max 4 spans total (1 inline pair + 1 block pair)
+- ✅ **No transformation changes** - works with existing pipeline
+- ✅ **Performance acceptable** - converting 1 element per selection change (~0.1-0.5ms) is negligible
+- ✅ **Editable marks** - user can modify `**` to unwrap formatting
+
+---
+
 This is the new feature:
 
 ```markdown

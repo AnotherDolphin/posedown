@@ -108,6 +108,27 @@
 		white-space: break-spaces;
 	}
 
+	/* FocusMarks: Styling for dynamically injected markdown delimiter spans */
+	:global(.pd-focus-mark) {
+		color: #888;
+		font-family: 'Courier New', Consolas, monospace;
+		font-size: 0.9em;
+		opacity: 0.7;
+		user-select: auto; /* User can select and edit */
+		pointer-events: auto;
+	}
+
+	/* Ensure marks don't inherit parent formatting */
+	:global(strong > .pd-focus-mark),
+	:global(em > .pd-focus-mark),
+	:global(code > .pd-focus-mark),
+	:global(s > .pd-focus-mark),
+	:global(del > .pd-focus-mark) {
+		font-weight: normal;
+		font-style: normal;
+		text-decoration: none;
+	}
+
 	.ast {
 		display: flex;
 		flex-direction: column;
