@@ -173,54 +173,39 @@ export class FocusMarkManager {
 	 */
 	private extractDelimiters(element: HTMLElement): { start: string; end?: string } | null {
 		try {
-			// For inline elements with nested children, we need a different approach
-			// We'll clone the element, get ONLY the first text node content, convert to markdown
-			const clone = element.cloneNode(true) as HTMLElement
-
-			// Remove all child elements, keep only the first text node
-			while (clone.childNodes.length > 1) {
-				clone.removeChild(clone.lastChild!)
-			}
-
-			const textContent = clone.textContent || ''
+			// #5: Simplified approach - create element with just text content
+			const textContent = element.textContent || ''
 			if (!textContent.trim()) return null
 
-			// Convert simplified element to markdown
-			const tempDiv = document.createElement('div')
-			tempDiv.appendChild(clone)
-			const markdown = htmlToMarkdown(tempDiv.innerHTML)
+			// Create clean element with same tag name and text content only
+			const temp = document.createElement(element.tagName)
+			temp.textContent = textContent
 
-			// Extract delimiters by comparing markdown vs plain text
-			// Trim both to handle cases where markdown converter trims whitespace
+			// Convert to markdown
+			const markdown = htmlToMarkdown(temp.outerHTML).trim()
 			const trimmedText = textContent.trim()
-			const trimmedMarkdown = markdown.trim()
-			const contentStartIndex = trimmedMarkdown.indexOf(trimmedText)
 
-			if (contentStartIndex === -1) return null
+			// Split markdown by text content to extract delimiters
+			// Example: "**bold**".split("bold") → ["**", "**"] (2 parts)
+			// Example: "# Title".split("Title") → ["# ", ""] (2 parts - prefix + empty)
+			const parts = markdown.split(trimmedText)
 
-			const start = trimmedMarkdown.substring(0, contentStartIndex)
-			const end = trimmedMarkdown.substring(contentStartIndex + trimmedText.length)
+			// Error handling: text not found in markdown (would give only 1 part)
+			if (parts.length < 2) return null
 
-			// Return based on element type
+			const start = parts[0]
+			const end = parts[1] || ''
+			console.log(start, end)
+			
+
+			// Block elements: return only prefix (end is empty string anyway)
 			if (isBlockTagName(element.tagName as any)) {
 				return { start }
-			} else {
-				return { start, end }
 			}
 
-			// #5: why not use the next lines instead of the whole code above
-			// Answer: You're absolutely right! Your approach is simpler and cleaner.
-			// The current code removes nested children to avoid issues, but your approach
-			// handles it more elegantly by using just textContent. Let me refactor to use your approach:
-			/*
-			const temp = document.createElement(element.tagName)
-			temp.textContent = element.textContent
-			const markdown = htmlToMarkdown(temp.outerHTML)
-			const delimiters = markdown.split(temp.textContent).map(s => s.trim())
-			// return as needed. if <2 its block
-			*/
-			// Refactored implementation using your simpler approach is above the current code (lines 200-234)
-			
+			// Inline elements: return both opening and closing delimiters
+			return { start, end }
+
 		} catch (error) {
 			console.error('[FocusMarks] Failed to extract delimiters:', error)
 			return null

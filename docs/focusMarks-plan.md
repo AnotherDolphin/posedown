@@ -5,8 +5,20 @@ I want to develop a new feature for my editor.
 ## Implementation Status
 
 ### ✅ Completed & Working
-- **FocusMarkManager class** - Detection, injection, and ejection logic fully implemented
-- **Integration** into richEditorState.svelte.ts via onSelectionChange
+- **FocusMarkManager class** (`focus-mark-manager.ts`) - Detection, injection, and ejection logic fully implemented
+  - ✅ Delimiter extraction via simplified split() approach (no complex indexOf/substring)
+  - ✅ Inline marks injection (bold `**`, italic `*`, code `` ` ``, strikethrough `~~`)
+  - ✅ Block marks injection (headings `#`, blockquote `>`, list items `-`/`1.`)
+  - ✅ Clean ejection with text node normalization
+  - ✅ Browser-handled cursor preservation (no manual restoration needed)
+  - ✅ Preserves delimiter spacing (e.g., `"# "` not trimmed to `"#"`)
+- **Tag list centralization** - INLINE_FORMATTED_TAGS and BLOCK_FORMATTED_TAGS defined in dom.ts
+  - ✅ Unified to markdown-only tags (S for strikethrough, not U for underline)
+  - ✅ No code duplication between files
+  - ✅ No circular dependencies
+- **Integration** into richEditorState.svelte.ts via onSelectionChange (line 384)
+  - ✅ FocusMarkManager.update() called on every selection change
+  - ✅ Separated from "exit marks" tracking logic for clarity
 - **CSS styling** for .pd-focus-mark spans (subtle gray #888, monospace, 0.9em, 70% opacity)
 - **Type checking** passes with no errors
 - **Tested successfully** via Chrome DevTools:
@@ -17,9 +29,13 @@ I want to develop a new feature for my editor.
   - ✅ Visual styling works as intended
 
 ### 🚧 Next Steps (TODOs)
-1. **Implement span stripping in onInput** - Strip .pd-focus-mark spans before pattern detection and markdown conversion (lines 200-220 in richEditorState.svelte.ts)
-   - This prevents marks from being treated as content during transformations
-   - Required for proper "unwrap" behavior when user edits marks
+1. **Implement span stripping in onInput** (DEFERRED - stashed)
+   - Strip .pd-focus-mark spans before pattern detection and markdown conversion
+   - Clone block and remove all focus mark spans
+   - Normalize text nodes to merge fragments
+   - Use clean block for pattern detection and markdown conversion
+   - This enables proper "unwrap" behavior when user edits marks
+   - **Status**: Premature implementation was stashed; will revisit after testing confirms it's needed
 2. **Test editing marks** - Verify changing `**` to `*` properly unwraps formatting
 3. **Test with lists** - Verify list item marks (`-`, `1.`) work correctly
 4. **Verify history behavior** - Ensure marks don't trigger unwanted history saves
