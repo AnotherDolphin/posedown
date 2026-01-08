@@ -541,22 +541,53 @@ export const getRangeFromBlockOffsets = (
 	return range
 }
 
+/**
+ * Get the first text node within a node (recursively)
+ */
+const getFirstTextNode = (node: Node): Text | null => {
+	if (node.nodeType === Node.TEXT_NODE) return node as Text
+	for (let i = 0; i < node.childNodes.length; i++) {
+		const textNode = getFirstTextNode(node.childNodes[i])
+		if (textNode) return textNode
+	}
+	return null
+}
+
 // Helper to compare and swap nodes while tracking the cursor's logical target
 export const smartReplaceChildren = (
 	parent: HTMLElement,
 	newFragment: DocumentFragment | Node,
-	selection: Selection
+	selection: Selection,
+	patternMatch?: { start: number; end: number; delimiterLength: number } | null
 ) => {
 	const oldNodes = Array.from(parent.childNodes)
 	const newNodes = Array.from(newFragment.childNodes)
 
-	// We need to track if the cursor was in a node that got replaced
 	const anchorNode = selection.anchorNode
-	let cursorRestored = false
-	let cursorFound = false
+	let caretRestored = false
+	let caretFound = false
 	let anchorOffset = selection.anchorOffset
 
-	// 1. Iterate over the larger list (usually lists are similar length)
+	// Calculate delimiter offset if pattern matched
+	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
+		// Get cursor's text offset in the block
+		const range = document.createRange()
+		range.setStart(parent, 0)
+		range.setEnd(anchorNode, selection.anchorOffset)
+		const cursorOffset = range.toString().length
+
+		// Calculate how many delimiter chars to subtract based on cursor position
+		// Pattern delimiters: opening + closing = 2 * delimiterLength
+		if (cursorOffset >= patternMatch.end) {
+			// Cursor AT or AFTER pattern → subtract both opening & closing delimiters
+			anchorOffset -= patternMatch.delimiterLength * 2
+		} else if (cursorOffset > patternMatch.start + patternMatch.delimiterLength) {
+			// Cursor INSIDE pattern (after opening delimiter) → subtract opening only
+			anchorOffset -= patternMatch.delimiterLength
+		}
+		// If cursor is BEFORE pattern start → no adjustment needed
+	}
+
 	const maxLength = Math.max(oldNodes.length, newNodes.length)
 
 	for (let i = 0; i < maxLength; i++) {
@@ -572,10 +603,25 @@ export const smartReplaceChildren = (
 		// Case B: End of old list (New content is longer) -> Append new
 		if (!oldNode) {
 			parent.appendChild(newNode)
-			// If we haven't restored cursor and this is the last added node, put it here
-			if (!cursorRestored && i === newNodes.length - 1) {
+
+			// Check if cursor should be in this node
+			if (caretFound && !caretRestored) {
+				const nodeLength = newNode.textContent?.length || 0
+				if (anchorOffset <= nodeLength) {
+					// Place cursor at specific offset
+					const textNode = getFirstTextNode(newNode)
+					if (textNode) {
+						selection.collapse(textNode, anchorOffset)
+						caretRestored = true
+					}
+				} else {
+					// Cursor is beyond this node
+					anchorOffset -= nodeLength
+				}
+			} else if (!caretRestored && i === newNodes.length - 1) {
+				// Last node fallback
 				setCaretAtEnd(newNode, selection)
-				cursorRestored = true
+				caretRestored = true
 			}
 			continue
 		}
@@ -585,7 +631,7 @@ export const smartReplaceChildren = (
 		if (oldNode.isEqualNode(newNode)) {
 			// Check if cursor was here. If so, it's already safe because we didn't touch the node!
 			if (anchorNode && (oldNode === anchorNode || oldNode.contains(anchorNode))) {
-				cursorRestored = true
+				caretRestored = true
 			}
 			continue
 		}
@@ -594,30 +640,33 @@ export const smartReplaceChildren = (
 		// 1. Check if cursor was inside the old node before we destroy it
 		const hadCursor = anchorNode && (oldNode === anchorNode || oldNode.contains(anchorNode))
 
-		// 2. Swap
+		// 2. If cursor was here, start tracking it
+		if (hadCursor) caretFound = true
+
+		// 3. Swap
 		parent.replaceChild(newNode, oldNode)
 
-		// 3. Restore Cursor
-		if (hadCursor || (cursorFound && !cursorRestored)) {
-			// #issue: if a node was split into two, cursor goes to end of the first new node, not where it was logically (ex. typing at the end makes it jump to start of a new word)
-			// Heuristic: Place cursor at the END of the NEW node.
-			// This is perfect for "typing at the end" (creation).
-			// It is acceptable for "editing in middle" (jumps to end of current word).
-			console.log(newNode.textContent?.length, anchorOffset)
-			// Adjust anchorOffset for next nodes if cursor was beyond this node
-			if (anchorOffset > newNode.textContent?.length!) {
-				cursorFound = true
-				anchorOffset -= newNode.textContent?.length!
+		// 4. Restore Cursor with specific offset (if we're tracking it)
+		if (caretFound && !caretRestored) {
+			const nodeLength = newNode.textContent?.length || 0
+
+			if (anchorOffset <= nodeLength) {
+				// Cursor should be in THIS node at specific offset
+				const textNode = getFirstTextNode(newNode)
+				if (textNode) {
+					selection.collapse(textNode, Math.min(anchorOffset, textNode.length))
+					caretRestored = true
+				}
 			} else {
-				setCaretAtEnd(newNode, selection)
-				cursorRestored = true
+				// Cursor is beyond this node - continue tracking
+				anchorOffset -= nodeLength
 			}
 		}
 	}
 
 	// Fallback: If cursor was somehow lost (e.g. structure changed drastically),
 	// put it at the end of the block.
-	if (!cursorRestored) {
+	if (!caretRestored) {
 		const last = parent.lastChild || parent
 		setCaretAtEnd(last, selection)
 	}

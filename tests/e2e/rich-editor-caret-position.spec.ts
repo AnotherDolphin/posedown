@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 const EDITOR_URL = '/test'
 
-test.describe.serial('Rich Editor - Caret Position After Transformations', () => {
+test.describe('Rich Editor - Caret Position After Transformations', () => {
 	test.beforeEach(async ({ page }) => {
 		// Only navigate once at the start of the suite
 		if (page.url() === 'about:blank') {
@@ -236,5 +236,186 @@ test.describe.serial('Rich Editor - Caret Position After Transformations', () =>
 
 		const innerHTML = await editor.innerHTML()
 		expect(innerHTML).toContain('<code>code</code>x')
+	})
+
+	test('caret should be correct when adding markdown in the middle of a block', async ({
+		page,
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		await page.keyboard.type('test sentence')
+		await page.waitForTimeout(100)
+
+		// Move caret before "sentence"
+		for (let i = 0; i < 8; i++) {
+			await page.keyboard.press('ArrowLeft')
+		}
+
+		await page.keyboard.type('**mid** ')
+		await page.waitForTimeout(100)
+
+		// Check that the transformation happened
+		await expect(editor.locator('strong')).toContainText('mid')
+		let innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('test <strong>mid</strong> sentence')
+
+		// Verify caret position
+		await page.keyboard.type('x')
+		innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('test <strong>mid</strong> xsentence')
+	})
+
+	test('caret should handle cursor BEFORE pattern start', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('hello')
+		await page.waitForTimeout(100)
+
+		// Move cursor to start
+		for (let i = 0; i < 5; i++) {
+			await page.keyboard.press('ArrowLeft')
+		}
+
+		// Cursor is at: |hello
+		// Now type pattern at the end by moving right first
+		for (let i = 0; i < 5; i++) {
+			await page.keyboard.press('ArrowRight')
+		}
+		await page.keyboard.type(' **bold**')
+		await page.waitForTimeout(100)
+
+		// Move cursor back before "hello"
+		for (let i = 0; i < 11; i++) {
+			await page.keyboard.press('ArrowLeft')
+		}
+
+		// Type at beginning (before pattern)
+		await page.keyboard.type('x')
+
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('xhello <strong>bold</strong>')
+	})
+
+	test('caret should handle multiple patterns - cursor at end', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await editor.pressSequentially('**first** **second**')
+		await page.waitForTimeout(100)
+
+		// Cursor is at the end after typing
+		await page.keyboard.type('x')
+
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('<strong>first</strong> <strong>second</strong>x')
+	})
+
+	test('caret should handle pattern with punctuation before it', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('hello, **world**!')
+		await page.waitForTimeout(100)
+
+		// Cursor should be after the !
+		await page.keyboard.type('x')
+
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('hello, <strong>world</strong>!x')
+	})
+
+	test('caret should handle pattern at very start of block', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('**start**')
+		await page.waitForTimeout(100)
+
+		const innerHTML = await editor.innerHTML()
+		await expect(editor.locator('strong')).toContainText('start')
+
+		// Type right after
+		await page.keyboard.type('x')
+		const updated = await editor.innerHTML()
+		expect(updated).toContain('<strong>start</strong>x')
+	})
+
+	test('caret should handle long text with pattern in middle', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('The quick brown fox jumps over the lazy dog')
+		await page.waitForTimeout(100)
+
+		// Move to before "lazy"
+		for (let i = 0; i < 8; i++) {
+			await page.keyboard.press('ArrowLeft')
+		}
+
+		await page.keyboard.type('**very** ')
+		await page.waitForTimeout(100)
+
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('The quick brown fox jumps over the <strong>very</strong> lazy dog')
+	})
+
+	test('caret should handle typing after pattern with no trailing space', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('prefix **bold**suffix')
+		await page.waitForTimeout(100)
+
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('prefix <strong>bold</strong>suffix')
+	})
+
+	test('caret should handle typing in middle then navigating away and back', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('start end')
+		await page.waitForTimeout(100)
+
+		// Move to middle
+		for (let i = 0; i < 4; i++) {
+			await page.keyboard.press('ArrowLeft')
+		}
+
+		await page.keyboard.type('**mid** ')
+		await page.waitForTimeout(100)
+
+		// Navigate away then back
+		// Left twice goes inside the strong tag, right twice goes back out (but after the space)
+		await page.keyboard.press('ArrowLeft')
+		await page.keyboard.press('ArrowLeft')
+		await page.keyboard.press('ArrowRight')
+		await page.keyboard.press('ArrowRight')
+
+		await page.keyboard.type('x')
+
+		const innerHTML = await editor.innerHTML()
+		// After navigation, cursor ends up inside strong tag with space before x
+		expect(innerHTML).toContain('start<strong>mid</strong> x end')
+	})
+
+	test('caret should handle underscore bold pattern', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('__bold__')
+		await page.waitForTimeout(100)
+
+		await expect(editor.locator('strong')).toContainText('bold')
+
+		await page.keyboard.type('x')
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('<strong>bold</strong>x')
+	})
+
+	test('caret should handle single underscore italic pattern', async ({ page }) => {
+		const editor = page.locator('[role=\"article\"][contenteditable=\"true\"]')
+
+		await page.keyboard.type('_italic_')
+		await page.waitForTimeout(100)
+
+		await expect(editor.locator('em')).toContainText('italic')
+
+		await page.keyboard.type('x')
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toContain('<em>italic</em>x')
 	})
 })
