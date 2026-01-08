@@ -28,7 +28,7 @@ import {
 } from '../core/utils/dom'
 import { setCaretAtEnd, setCaretAfterExit, setCaretAfter } from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
-import { FocusMarkManager } from '../core/utils/focus-mark-manager'
+import { FOCUS_MARK_CLASS, FocusMarkManager } from '../core/utils/focus-mark-manager'
 
 // handle, enter on list, manually entering md syntax
 // reason for observer reinteg. node level tree updates,
@@ -44,6 +44,7 @@ export class RichEditorState {
 	marks: Array<Element | Node> | null = $state(null) // only a state for debugging with $inspect
 	private history = new EditorHistory({ debug: true })
 	private focusMarkManager = new FocusMarkManager()
+	private skipNextFocusMarks = false // Prevents marks from appearing right after transformations
 
 	constructor(markdown: string) {
 		this.rawMd = markdown
@@ -168,6 +169,9 @@ export class RichEditorState {
 		// setCaretAfterExit(lastInsertable, selection)
 		setCaretAtEnd(lastInsertable, selection)
 
+		// Prevent FocusMarks from appearing on just-pasted formatted elements
+		this.skipNextFocusMarks = true
+
 		// Save state AFTER paste completes
 		if (this.editableRef) {
 			this.history.push(this.editableRef)
@@ -197,23 +201,18 @@ export class RichEditorState {
 		let block = getMainParentBlock(node, this.editableRef)
 		if (!block) return
 
-		// TODO: Strip .pd-focus-mark spans before pattern detection and markdown conversion
+		// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
 		// This prevents focus mark spans from being treated as content during transformation.
-		//
-		// Implementation:
-		//   const cleanBlock = block.cloneNode(true) as HTMLElement
-		//   cleanBlock.querySelectorAll('.pd-focus-mark').forEach(mark => mark.remove())
-		//   cleanBlock.normalize()  // Merge fragmented text nodes
-		//
-		// Then use cleanBlock for pattern detection and markdown conversion below
+		const cleanBlock = block.cloneNode(true) as HTMLElement
+		cleanBlock.querySelectorAll('.'+FOCUS_MARK_CLASS).forEach(mark => mark.remove())
+		cleanBlock.normalize()  // Merge fragmented text nodes
 
 		// Check for block patterns, with special handling for list patterns inside LIs
-		const hasBlockPattern = isBlockPattern(block.innerText, node)
-		const hasInlinePattern = findFirstMarkdownMatch(block.textContent || '')
+		const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
+		const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
 
 		if (hasBlockPattern || hasInlinePattern) {
-			// TODO: Use cleanBlock here instead of block
-			const contentInMd = htmlBlockToMarkdown(block)
+			const contentInMd = htmlBlockToMarkdown(cleanBlock)
 
 			// NOTE: When user edits a focus mark span (e.g., changes ** to *),
 			// this will parse invalid markdown (e.g., "*text**") and automatically
@@ -232,6 +231,10 @@ export class RichEditorState {
 				block.replaceWith(fragment)
 				setCaretAtEnd(lastNodeInFragment, selection)
 			}
+
+			// Prevent FocusMarks from appearing on the just-transformed element
+			// They should only appear when user navigates BACK to an existing element
+			this.skipNextFocusMarks = true
 
 			this.history.push(this.editableRef)
 			return
@@ -273,12 +276,14 @@ export class RichEditorState {
 			e.preventDefault()
 			this.history.breakCoalescing(this.editableRef)
 			this.history.undo(this.editableRef)
+			this.skipNextFocusMarks = true // Don't show marks on restored content
 			this.isDirty = true
 			return
 		}
 		if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
 			e.preventDefault()
 			this.history.redo(this.editableRef)
+			this.skipNextFocusMarks = true // Don't show marks on restored content
 			this.isDirty = true
 			return
 		}
@@ -387,7 +392,12 @@ export class RichEditorState {
 
 		// ===== FocusMarks: Show markdown delimiters when cursor enters formatted elements =====
 		// This injects/ejects .pd-focus-mark spans dynamically based on cursor position
-		// this.focusMarkManager.update(selection, this.editableRef)
+		// Skip if this selection change was triggered by a transformation (not user navigation)
+		if (this.skipNextFocusMarks) {
+			this.skipNextFocusMarks = false
+		} else {
+			this.focusMarkManager.update(selection, this.editableRef)
+		}
 
 		// ===== Exit Marks: Track styled elements where caret is at END (for exit-on-type) =====
 		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements

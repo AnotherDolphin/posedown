@@ -16,29 +16,39 @@ I want to develop a new feature for my editor.
   - ✅ Unified to markdown-only tags (S for strikethrough, not U for underline)
   - ✅ No code duplication between files
   - ✅ No circular dependencies
-- **Integration** into richEditorState.svelte.ts via onSelectionChange (line 384)
-  - ✅ FocusMarkManager.update() called on every selection change
+- **Integration** into richEditorState.svelte.ts via onSelectionChange (line 391-395)
+  - ✅ FocusMarkManager.update() called conditionally on selection change
   - ✅ Separated from "exit marks" tracking logic for clarity
+- **Skip flag mechanism** (`skipNextFocusMarks`) to prevent marks on new transformations
+  - ✅ Flag set after markdown pattern transformations (line 234)
+  - ✅ Flag set after paste operations (line 173)
+  - ✅ Flag set after undo/redo operations (lines 279, 286)
+  - ✅ Marks only appear when navigating BACK to existing formatted elements
+  - ✅ Marks do NOT appear immediately after creating new formatted content
+- **Span stripping in onInput** (lines 200-204) - Strips .pd-focus-mark spans before pattern detection
+  - ✅ Clones block and removes all focus mark spans
+  - ✅ Normalizes text nodes to merge fragments
+  - ✅ Uses clean block for pattern detection and markdown conversion
+  - ✅ Enables proper "unwrap" behavior when user edits marks
 - **CSS styling** for .pd-focus-mark spans (subtle gray #888, monospace, 0.9em, 70% opacity)
 - **Type checking** passes with no errors
-- **Tested successfully** via Chrome DevTools:
-  - ✅ Inline marks (bold `**`, italic `*`) appear when cursor enters
-  - ✅ Block marks (heading `#`) appear when cursor enters
-  - ✅ Marks eject cleanly when cursor leaves
-  - ✅ Nested formatting handled correctly (e.g., bold within heading)
-  - ✅ Visual styling works as intended
+
+### 🧪 Testing Status
+- ✅ Inline marks (bold `**`, italic `*`) appear when cursor navigates to them
+- ✅ Block marks (heading `#`) appear when cursor navigates to them
+- ✅ Marks eject cleanly when cursor leaves
+- ✅ Nested formatting handled correctly (e.g., bold within heading)
+- ✅ Visual styling works as intended
+- ✅ Marks do NOT appear right after transformation (correct behavior)
+- ⏳ **Pending**: Test editing marks to verify unwrap behavior (change `**` to `*`)
+- ⏳ **Pending**: Test with lists to verify list item marks (`-`, `1.`) work correctly
+- ⏳ **Pending**: Verify history behavior (marks shouldn't pollute undo/redo stack)
 
 ### 🚧 Next Steps (TODOs)
-1. **Implement span stripping in onInput** (DEFERRED - stashed)
-   - Strip .pd-focus-mark spans before pattern detection and markdown conversion
-   - Clone block and remove all focus mark spans
-   - Normalize text nodes to merge fragments
-   - Use clean block for pattern detection and markdown conversion
-   - This enables proper "unwrap" behavior when user edits marks
-   - **Status**: Premature implementation was stashed; will revisit after testing confirms it's needed
-2. **Test editing marks** - Verify changing `**` to `*` properly unwraps formatting
-3. **Test with lists** - Verify list item marks (`-`, `1.`) work correctly
-4. **Verify history behavior** - Ensure marks don't trigger unwanted history saves
+1. **Test editing marks** - Verify changing `**` to `*` properly unwraps formatting
+2. **Test with lists** - Verify list item marks (`-`, `1.`) work correctly
+3. **Verify history behavior** - Ensure marks don't trigger unwanted history saves
+4. **Edge case testing** - Multi-cursor, complex nesting, rapid navigation
 
 ---
 
