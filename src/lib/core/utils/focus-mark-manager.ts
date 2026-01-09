@@ -91,12 +91,14 @@ export class FocusMarkManager {
 	 * Only considers BLOCK_FORMATTED_TAGS (h1-h6, blockquote, li).
 	 */
 	private findFocusedBlock(selection: Selection, root: HTMLElement): HTMLElement | null {
-		const block = getMainParentBlock(selection.anchorNode!, root)
-		if (!block) return null
+		let node: Node | null = selection.anchorNode
 
-		// Check if this block is a formatted block that should show marks
-		if (BLOCK_FORMATTED_TAGS.includes(block.tagName as any)) {
-			return block
+		// Walk up the tree looking for block formatted elements
+		while (node && node !== root) {
+			if (node instanceof HTMLElement && BLOCK_FORMATTED_TAGS.includes(node.tagName as any)) {
+				return node
+			}
+			node = node.parentNode
 		}
 
 		return null
@@ -185,9 +187,27 @@ export class FocusMarkManager {
 			const textContent = element.textContent || ''
 			if (!textContent.trim()) return null
 
-			// Create clean element with same tag name and text content only
-			const temp = document.createElement(element.tagName)
-			temp.textContent = textContent
+			let temp: HTMLElement
+
+			// Special handling for LI: needs parent list context to determine delimiter
+			if (element.tagName === 'LI') {
+				const parentList = element.parentElement
+				if (!parentList || (parentList.tagName !== 'UL' && parentList.tagName !== 'OL')) {
+					return null
+				}
+
+				// Create parent list with single LI child
+				// This preserves context: UL → "- " or OL → "1. "
+				const listWrapper = document.createElement(parentList.tagName)
+				const liTemp = document.createElement('LI')
+				liTemp.textContent = textContent
+				listWrapper.appendChild(liTemp)
+				temp = listWrapper
+			} else {
+				// Regular handling for other elements (headings, inline, blockquote, etc.)
+				temp = document.createElement(element.tagName)
+				temp.textContent = textContent
+			}
 
 			// Convert to markdown
 			const markdown = htmlToMarkdown(temp.outerHTML).trim()
@@ -196,6 +216,7 @@ export class FocusMarkManager {
 			// Split markdown by text content to extract delimiters
 			// Example: "**bold**".split("bold") → ["**", "**"] (2 parts)
 			// Example: "# Title".split("Title") → ["# ", ""] (2 parts - prefix + empty)
+			// Example: "- Item".split("Item") → ["- ", ""] (2 parts - list prefix + empty)
 			const parts = markdown.split(trimmedText)
 
 			// Error handling: text not found in markdown (would give only 1 part)
@@ -291,19 +312,25 @@ export class FocusMarkManager {
 	}
 }
 
+/**
+ * issues:
+ * - blocks don't react to md mark changes
+ * - selecting a code block should focus outside the focusMarks (spans) OR prevent enter from adding new lines inside spans
+ */
+
 // NOTE: Integration points that need to be handled elsewhere:
 //
-// 1. IN onInput (richEditorState.svelte.ts):
+// 1. IN onInput (richEditorState.svelte.ts): ✅
 //    - Strip .pd-focus-mark spans BEFORE pattern detection and markdown conversion
 //    - Use: block.querySelectorAll('.pd-focus-mark').forEach(m => m.remove())
 //    - Then: block.normalize()
 //
-// 2. IN onInput (after pattern detection triggers unwrap):
+// 2. IN onInput (after pattern detection triggers unwrap): ✅
 //    - When user edits a mark span (e.g., changes ** to *), the next onInput cycle
 //      will parse the invalid markdown (e.g., "*text**") and unwrap the formatting
 //    - No special handling needed - existing pipeline handles this automatically
 //
-// 3. IN history system:
+// 3. IN history system: ✅
 //    - Ensure mark spans don't trigger history saves (they're UI-only, not content)
 //    - May need to filter them out during history serialization
 //

@@ -1,0 +1,2 @@
+- must hide and override default LI html marker; bad UX when md delimiter is also displayed
+- 
