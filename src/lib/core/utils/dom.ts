@@ -86,17 +86,22 @@ export const preserveOneChild = (editable: HTMLElement | undefined, e?: Keyboard
 }
 
 /**
- * Finds the first ancestor element that is a styled element (bold, italic, etc.)
+ * Finds the first ancestor element matching any of the provided tag names
  * @param node - Starting node to search from
  * @param boundary - Optional boundary element to stop searching at (e.g., contentEditable root)
- * @returns The first styled ancestor or null if none found
+ * @param tags - Array of tag names to search for (defaults to INLINE_FORMATTED_TAGS)
+ * @returns The first matching ancestor or null if none found
  */
-const getStyledAncestor = (node: Node, boundary?: Element): Element | null => {
+export const getFirstOfAncestors = (
+	node: Node,
+	boundary: Element,
+	tags: readonly string[]
+): Element | null => {
 	let current: Node | null = node
 	while (current && current !== boundary) {
 		if (current.nodeType === Node.ELEMENT_NODE) {
 			const element = current as Element
-			if (INLINE_FORMATTED_TAGS.includes(element.tagName as any)) {
+			if (tags.includes(element.tagName as any)) {
 				return element
 			}
 		}
@@ -188,28 +193,6 @@ export const insertAfter = (newSibling: Node, target: Node) => {
 	}
 }
 
-/**
- * Finds the closest ancestor element matching a tag name
- * @param node - Starting node
- * @param tagName - Tag name to search for (e.g., 'LI', 'UL', 'P')
- * @param boundary - Boundary element to stop searching at
- * @returns The closest matching ancestor or null
- */
-export const getAncestorByTag = <T extends HTMLElement = HTMLElement>(
-	node: Node,
-	tagName: string,
-	boundary: Element
-): T | null => {
-	let current: Node | null = node
-	while (current && current !== boundary) {
-		if (current.nodeType === Node.ELEMENT_NODE && (current as Element).tagName === tagName) {
-			return current as T
-		}
-		current = current.parentNode
-	}
-	return null
-}
-
 export const getMainParentBlock = (node: Node, boundry: Element): HTMLElement | null => {
 	if (node === boundry) {
 		// issue: this means that the editable div itself is being anchored!
@@ -256,7 +239,7 @@ export const handleEnterKey = (editable: HTMLElement, e: KeyboardEvent): boolean
 	if (!selection || !selection.anchorNode) return false
 
 	// Check if we're in a list item
-	const listItem = getAncestorByTag<HTMLLIElement>(selection.anchorNode, 'LI', editable)
+	const listItem = getFirstOfAncestors(selection.anchorNode, editable, ['LI']) as HTMLLIElement | null
 	if (listItem && !e.shiftKey) {
 		e.preventDefault()
 		return handleEnterInListItem(selection, listItem)
@@ -332,7 +315,7 @@ export const handleBackspaceKey = (editable: HTMLElement, e: KeyboardEvent): boo
 	if (!selection || !selection.anchorNode) return false
 
 	// handle if we're in a list item
-	const listItem = getAncestorByTag<HTMLLIElement>(selection.anchorNode, 'LI', editable)
+	const listItem = getFirstOfAncestors(selection.anchorNode, editable, ['LI']) as HTMLLIElement | null
 	if (listItem) {
 		const handled = handleBackspaceInListItem(selection, listItem)
 		if (handled) {
@@ -342,7 +325,7 @@ export const handleBackspaceKey = (editable: HTMLElement, e: KeyboardEvent): boo
 	}
 
 	// escape style persistence if backspacing would remove all text in a styled element
-	const styledElement = getStyledAncestor(selection.anchorNode, editable)
+	const styledElement = getFirstOfAncestors(selection.anchorNode, editable, INLINE_FORMATTED_TAGS)
 	if (styledElement) {
 		const willRemoveAll = willBackspaceRemoveAllStyledText(selection, styledElement, e)
 		if (willRemoveAll) {
@@ -368,7 +351,7 @@ export const handleTabKey = (editable: HTMLElement, e: KeyboardEvent): boolean =
 	if (!selection || !selection.anchorNode) return false
 
 	// Check if we're in a list item
-	const listItem = getAncestorByTag<HTMLLIElement>(selection.anchorNode, 'LI', editable)
+	const listItem = getFirstOfAncestors(selection.anchorNode, editable, ['LI']) as HTMLLIElement | null
 
 	if (listItem) {
 		// Handle Tab in list item (indent/nest)
@@ -393,7 +376,7 @@ export const handleShiftTabKey = (editable: HTMLElement, e: KeyboardEvent): bool
 	if (!selection || !selection.anchorNode) return false
 
 	// Check if we're in a list item
-	const listItem = getAncestorByTag<HTMLLIElement>(selection.anchorNode, 'LI', editable)
+	const listItem = getFirstOfAncestors(selection.anchorNode, editable, ['LI']) as HTMLLIElement | null
 
 	if (listItem) {
 		// Handle Shift+Tab in list item (unindent or exit)

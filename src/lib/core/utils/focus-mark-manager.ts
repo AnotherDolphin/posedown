@@ -1,5 +1,5 @@
 import { htmlToMarkdown } from '../transforms/ast-utils'
-import { getMainParentBlock, INLINE_FORMATTED_TAGS, BLOCK_FORMATTED_TAGS } from './dom'
+import { getMainParentBlock, INLINE_FORMATTED_TAGS, BLOCK_FORMATTED_TAGS, getFirstOfAncestors } from './dom'
 import { isBlockTagName } from './block-marks'
 
 /**
@@ -68,22 +68,8 @@ export class FocusMarkManager {
 	 * Only considers INLINE_FORMATTED_TAGS (strong, em, code, s, del).
 	 */
 	private findFocusedInline(selection: Selection, root: HTMLElement): HTMLElement | null {
-		let node: Node | null = selection.anchorNode
-
-		// Walk up the tree looking for inline formatted elements
-		// #1: can use getStyledAncestor instead?
-		// ##1: do both need to exist (semantically different)?
-		// Answer: YES - INLINE_FORMATTED_TAGS is now centralized in dom.ts and used by both
-		// FocusMarks (this file) and exit-styled-element (richEditorState.svelte.ts)
-		// Could use getStyledAncestor, but keeping this for clarity and avoiding circular dependency
-		while (node && node !== root) {
-			if (node instanceof HTMLElement && INLINE_FORMATTED_TAGS.includes(node.tagName as any)) {
-				return node
-			}
-			node = node.parentNode
-		}
-
-		return null
+		if (!selection.anchorNode) return null
+		return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS) as HTMLElement | null
 	}
 
 	/**
@@ -91,17 +77,8 @@ export class FocusMarkManager {
 	 * Only considers BLOCK_FORMATTED_TAGS (h1-h6, blockquote, li).
 	 */
 	private findFocusedBlock(selection: Selection, root: HTMLElement): HTMLElement | null {
-		let node: Node | null = selection.anchorNode
-
-		// Walk up the tree looking for block formatted elements
-		while (node && node !== root) {
-			if (node instanceof HTMLElement && BLOCK_FORMATTED_TAGS.includes(node.tagName as any)) {
-				return node
-			}
-			node = node.parentNode
-		}
-
-		return null
+		if (!selection.anchorNode) return null
+		return getFirstOfAncestors(selection.anchorNode, root, BLOCK_FORMATTED_TAGS) as HTMLElement | null
 	}
 
 	/**

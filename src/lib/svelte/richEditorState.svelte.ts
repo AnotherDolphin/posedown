@@ -13,7 +13,6 @@ import {
 	isStyledTagName,
 	insertAfter,
 	getMainParentBlock,
-	getAncestorByTag,
 	shouldAllowListTransform,
 	handleEnterKey,
 	handleBackspaceKey,
