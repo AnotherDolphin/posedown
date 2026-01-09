@@ -184,6 +184,19 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return
 
+		// Check if cursor is inside a focus mark span
+		// Walk up from anchorNode to find if any ancestor is a .pd-focus-mark span
+		let currentNode: Node | null = selection.anchorNode
+		while (currentNode && currentNode !== this.editableRef) {
+			if (currentNode instanceof HTMLElement && currentNode.classList?.contains(FOCUS_MARK_CLASS)) {
+				// Found a focus mark span - delegate to FocusMarkManager
+				this.focusMarkManager.handleSpanEdit(currentNode, selection)
+				// onInput will fire again after unwrap, normal flow continues
+				return
+			}
+			currentNode = currentNode.parentNode
+		}
+
 		// this was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
 		// also, a side effect of this code is that emptying a single child automatically makes it a P (even w/o ctrl+a)
 		// Guard clause: ensure editor always has at least <p><br></p>
