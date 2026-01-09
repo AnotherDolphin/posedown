@@ -191,8 +191,11 @@ export class RichEditorState {
 
 		if (focusedSpan) {
 			this.focusMarkManager.handleSpanEdit(focusedSpan, selection)
-			// onInput will fire again after unwrap, normal flow continues
-			return
+			this.editableRef.normalize()
+			// After unwrapping, save history and return early
+			// Do NOT run pattern detection - user intentionally made delimiters invalid
+			// this.history.push(this.editableRef)
+			// return
 		}
 
 		// this was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
@@ -245,7 +248,8 @@ export class RichEditorState {
 
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
-			this.skipNextFocusMarks = true
+			// except if last edit was in a span then always show focus marks
+			if (!focusedSpan) this.skipNextFocusMarks = true
 
 			this.history.push(this.editableRef)
 			return

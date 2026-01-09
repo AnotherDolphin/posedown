@@ -281,9 +281,11 @@ export class FocusMarkManager {
 	 */
 	private restoreCursor(textNode: Text, offset: number, selection: Selection): void {
 		const safeOffset = Math.min(offset, textNode.length)
+		// Create fresh range (not attached to old DOM structure)
 		const range = document.createRange()
 		range.setStart(textNode, safeOffset)
-		range.collapse(true)
+		range.setEnd(textNode, safeOffset)
+		// Clear stale ranges and set new range
 		selection.removeAllRanges()
 		selection.addRange(range)
 	}
