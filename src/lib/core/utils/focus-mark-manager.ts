@@ -19,6 +19,7 @@ export const FOCUS_MARK_CLASS = 'pd-focus-mark'
 export class FocusMarkManager {
 	private activeInline: HTMLElement | null = null
 	private activeBlock: HTMLElement | null = null
+	private spanListeners = new Map<HTMLSpanElement, (e: Event) => void>()
 
 	/**
 	 * Main update method - call this on selection change.
@@ -154,7 +155,15 @@ export class FocusMarkManager {
 
 		// Remove all mark spans
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
-		marks.forEach(mark => mark.remove())
+		marks.forEach(mark => {
+			const span = mark as HTMLSpanElement
+			const listener = this.spanListeners.get(span)
+			if (listener) {
+				span.removeEventListener('input', listener)
+				this.spanListeners.delete(span)
+			}
+			mark.remove()
+		})
 
 		// Merge fragmented text nodes back together
 		element.normalize()
@@ -195,8 +204,6 @@ export class FocusMarkManager {
 
 			const start = parts[0]
 			const end = parts[1] || ''
-			console.log(start, end)
-			
 
 			// Block elements: return only prefix (end is empty string anyway)
 			if (isBlockTagName(element.tagName as any)) {
@@ -205,7 +212,6 @@ export class FocusMarkManager {
 
 			// Inline elements: return both opening and closing delimiters
 			return { start, end }
-
 		} catch (error) {
 			console.error('[FocusMarks] Failed to extract delimiters:', error)
 			return null
@@ -220,8 +226,64 @@ export class FocusMarkManager {
 		const span = document.createElement('span')
 		span.className = FOCUS_MARK_CLASS
 		span.textContent = text
-		span.contentEditable = 'true' // User can edit to unwrap formatting
+		span.contentEditable = 'true'
+
+		// NEW: Attach input event listener
+		const listener = this.handleSpanInput.bind(this, span)
+		span.addEventListener('input', listener)
+		this.spanListeners.set(span, listener)
+
 		return span
+	}
+
+	// NEW: Handle input in focus mark span
+	private handleSpanInput(span: HTMLSpanElement, e: Event): void {
+		// Find the formatted element (parent of span)
+		const formattedElement = span.parentElement
+		if (!formattedElement || !INLINE_FORMATTED_TAGS.includes(formattedElement.tagName as any)) {
+			return
+		}
+
+		// Get current selection
+		const selection = window.getSelection()
+		if (!selection) return
+
+		// Calculate cursor offset before unwrapping
+		const cursorOffset = this.calculateCursorOffset(formattedElement, selection)
+
+		// Unwrap: Extract all text and replace with plain text node
+		const fullText = formattedElement.textContent || ''
+		const textNode = document.createTextNode(fullText)
+		formattedElement.replaceWith(textNode)
+
+		// Restore cursor
+		this.restoreCursor(textNode, cursorOffset, selection)
+
+		// Clean up our active references (element is gone)
+		if (this.activeInline === formattedElement) {
+			this.activeInline = null
+		}
+	}
+
+	// NEW: Calculate cursor offset in formatted element
+	private calculateCursorOffset(element: HTMLElement, selection: Selection): number {
+		const anchorNode = selection.anchorNode
+		if (!anchorNode || !element.contains(anchorNode)) return 0
+
+		const range = document.createRange()
+		range.setStart(element, 0)
+		range.setEnd(anchorNode, selection.anchorOffset)
+		return range.toString().length
+	}
+
+	// NEW: Restore cursor in text node
+	private restoreCursor(textNode: Text, offset: number, selection: Selection): void {
+		const safeOffset = Math.min(offset, textNode.length)
+		const range = document.createRange()
+		range.setStart(textNode, safeOffset)
+		range.collapse(true)
+		selection.removeAllRanges()
+		selection.addRange(range)
 	}
 }
 
