@@ -19,6 +19,7 @@ export const FOCUS_MARK_CLASS = 'pd-focus-mark'
 export class FocusMarkManager {
 	private activeInline: HTMLElement | null = null
 	private activeBlock: HTMLElement | null = null
+	spanRefs: Array<HTMLElement> = []
 
 	/**
 	 * Main update method - call this on selection change.
@@ -122,6 +123,9 @@ export class FocusMarkManager {
 		// Inject at element boundaries
 		element.prepend(startSpan)
 		element.append(endSpan)
+
+		// Track injected spans
+		this.spanRefs.push(startSpan, endSpan)
 	}
 
 	/**
@@ -143,6 +147,9 @@ export class FocusMarkManager {
 
 		// Inject at start of block
 		element.prepend(prefixSpan)
+
+		// Track injected span
+		this.spanRefs.push(prefixSpan)
 	}
 
 	/**
@@ -155,6 +162,7 @@ export class FocusMarkManager {
 		// Remove all mark spans
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
 		marks.forEach(mark => mark.remove())
+		this.spanRefs = []
 
 		// Merge fragmented text nodes back together
 		element.normalize()
@@ -236,6 +244,8 @@ export class FocusMarkManager {
 
 		// Calculate cursor offset before unwrapping
 		const cursorOffset = this.calculateCursorOffset(formattedElement, selection)
+		// Clear active span references
+		this.spanRefs = []
 
 		// Unwrap: Extract all text (including edited delimiter) and replace with plain text node
 		const fullText = formattedElement.textContent || ''

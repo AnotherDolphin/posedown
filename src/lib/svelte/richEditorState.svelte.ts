@@ -185,16 +185,14 @@ export class RichEditorState {
 		if (!selection || !selection.anchorNode || !this.editableRef) return
 
 		// Check if cursor is inside a focus mark span
-		// Walk up from anchorNode to find if any ancestor is a .pd-focus-mark span
-		let currentNode: Node | null = selection.anchorNode
-		while (currentNode && currentNode !== this.editableRef) {
-			if (currentNode instanceof HTMLElement && currentNode.classList?.contains(FOCUS_MARK_CLASS)) {
-				// Found a focus mark span - delegate to FocusMarkManager
-				this.focusMarkManager.handleSpanEdit(currentNode, selection)
-				// onInput will fire again after unwrap, normal flow continues
-				return
-			}
-			currentNode = currentNode.parentNode
+		const focusedSpan = this.focusMarkManager.spanRefs.find((span, _) =>
+			span.contains(selection.anchorNode)
+		)
+
+		if (focusedSpan) {
+			this.focusMarkManager.handleSpanEdit(focusedSpan, selection)
+			// onInput will fire again after unwrap, normal flow continues
+			return
 		}
 
 		// this was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
@@ -217,8 +215,8 @@ export class RichEditorState {
 		// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
 		// This prevents focus mark spans from being treated as content during transformation.
 		const cleanBlock = block.cloneNode(true) as HTMLElement
-		cleanBlock.querySelectorAll('.'+FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-		cleanBlock.normalize()  // Merge fragmented text nodes
+		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
+		cleanBlock.normalize() // Merge fragmented text nodes
 
 		// Check for block patterns, with special handling for list patterns inside LIs
 		const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
