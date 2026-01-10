@@ -82,15 +82,27 @@ const delimiters: Record<keyof typeof patterns, string> = {
 	italic: '*',
 	italicUnderscore: '_',
 	code: '`',
-	strikethrough: '~~',
-	highlight: '==',
-	subscript: '~',
-	superscript: '^',
-	underline: '__',
+	strikethrough: '~~', // GFM
+	highlight: '==', // Extended syntax
+	subscript: '~', // Extended syntax
+	superscript: '^', // Extended syntax
+	underline: '__', // Warning: Standard Markdown renders this as Bold
 	link: '[',
 	image: '![',
-	wikiLink: '[['
+	wikiLink: '[[' // Wiki-style
 }
+
+export const SUPPORTED_INLINE_DELIMITERS = new Set([
+	'*',
+	'**',
+	'_',
+	'__',
+	'~~',
+	'`'
+	// '==',
+	// '~',
+	// '^'
+])
 
 /**
  * Check if text contains any inline markdown syntax

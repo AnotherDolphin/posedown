@@ -181,12 +181,71 @@ export class RichEditorState {
 	// inline markdown detection, transformation, and post-render cursor pos
 	private onInput = (e: Event) => {
 		this.isDirty = true
-		if (!this.editableRef) return
+		const selection = window.getSelection()
+		if (!selection || !selection.anchorNode || !this.editableRef) return false
+
+		// span isConnected is false if content deleted/removed
+		// spain.contains is only true if selection lands within span and isConnected still true
+		// caret may land outside span if backspacing (*|*...) of it even if it is still present/isConnected
+
+		// FOCUS MARK SPAN EDIT HANDLING
+
+		// neutralize inline (two sided) focus mark to refelct (live) edits
+		if (
+			this.focusMarkManager.activeInline &&
+			(this.focusMarkManager.activeInline?.contains(selection.anchorNode) ||
+				this.focusMarkManager.spanRefs.some(
+					span => span.textContent !== this.focusMarkManager.activeDelimiter
+				) ||
+				this.focusMarkManager.spanRefs.some(span => !span.isConnected))
+		) {
+			// must first mirror the span edits
+			// 1. if either disconnected; remove both
+			if (this.focusMarkManager.spanRefs.some(span => !span.isConnected)) {
+				this.focusMarkManager.spanRefs.forEach(span => span.remove())
+				// return
+			}
+			// 2. if one is edited, mirror to the other
+			if (
+				this.focusMarkManager.spanRefs[0].textContent !==
+				this.focusMarkManager.spanRefs[1].textContent
+			) {
+				// determine which span was edited (based on selection position)
+				// if selection is at start of activeInline or right before, left span was edited
+				// else right span was edited
+				const delimiter = this.focusMarkManager.activeDelimiter
+				const editedSpan = this.focusMarkManager.spanRefs.find(
+					span => span.textContent !== delimiter
+				)
+				const mirrorSpan = this.focusMarkManager.spanRefs.find(span => span !== editedSpan)
+				if (editedSpan && mirrorSpan) {
+					mirrorSpan.textContent = editedSpan.textContent
+				}
+				// return
+			}
+
+			// convert content to markdown and back to html to normalize
+			const md = htmlToMarkdown(this.focusMarkManager.activeInline.innerHTML)
+			const { fragment } = markdownToDomFragment(md)
+			console.log(fragment.childNodes) // has leftover span if one was edited away
+
+			// replace activeInline in the dom and 
+			this.focusMarkManager.activeInline.replaceWith(fragment)
+			this.focusMarkManager.activeInline = null // should be handled by selectionchange if needed
+			this.focusMarkManager.spanRefs = []
+
+			// based on edit these steps may place the caret outside the activeInline (before it on P block), so it needs to be refocused so spanMarks reappear
+			// this.focusMarkManager.injectInlineMarks(fragment as HTMLElement)
+			// setCaretAfterExit(fragment, selection)
+			return
+		}
+
+		// NORMAL FLOW
 
 		if (findAndTransform(this.editableRef)) {
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
-			this.skipNextFocusMarks = true
+			// this.skipNextFocusMarks = true
 
 			this.history.push(this.editableRef)
 			return

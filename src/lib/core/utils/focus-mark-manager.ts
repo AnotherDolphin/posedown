@@ -23,9 +23,10 @@ export const FOCUS_MARK_CLASS = 'pd-focus-mark'
  * (1 inline opening + 1 inline closing + 1 block opening + 1 block closing).
  */
 export class FocusMarkManager {
-	private activeInline: HTMLElement | null = null
-	private activeBlock: HTMLElement | null = null
+	activeInline: HTMLElement | null = null
+	activeBlock: HTMLElement | null = null
 	spanRefs: Array<HTMLElement> = []
+	activeDelimiter: string | null = null
 	private spanObserver: MutationObserver | null = null
 	private editableRef: HTMLElement | null = null
 
@@ -41,6 +42,8 @@ export class FocusMarkManager {
 			for (const mutation of mutations) {
 				if (mutation.type === 'characterData' || mutation.type === 'childList') {
 					const target = mutation.target
+					console.log('overserve')
+					
 					// Find which span was edited (target could be text node inside span)
 					const editedSpan =
 						target.nodeType === Node.TEXT_NODE
@@ -50,7 +53,7 @@ export class FocusMarkManager {
 					if (editedSpan && this.spanRefs.includes(editedSpan)) {
 						const selection = window.getSelection()
 						if (selection) {
-							this.handleSpanEdit(editedSpan, selection)
+							// this.handleSpanEdit(editedSpan, selection)
 						}
 						break // Only handle first mutation
 					}
@@ -64,12 +67,14 @@ export class FocusMarkManager {
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
 	update(selection: Selection, root: HTMLElement): void {
+		
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
-
+		
 		// 1. Find which inline/block elements contain the cursor
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
+		console.log(selection.anchorNode, focusedInline)
 
 		// 2. Handle inline transition (if focused element changed)
 		if (this.activeInline !== focusedInline) {
@@ -126,7 +131,7 @@ export class FocusMarkManager {
 	 *
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
-	private injectInlineMarks(element: HTMLElement): void {
+	injectInlineMarks(element: HTMLElement): void {
 		// Skip if already marked
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
@@ -141,6 +146,7 @@ export class FocusMarkManager {
 		// Inject at element boundaries
 		element.prepend(startSpan)
 		element.append(endSpan)
+		this.activeDelimiter = delimiters.start
 
 		// Track injected spans
 		this.spanRefs.push(startSpan, endSpan)
