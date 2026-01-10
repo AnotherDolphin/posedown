@@ -1,6 +1,12 @@
 import { htmlToMarkdown } from '../transforms/ast-utils'
-import { getMainParentBlock, INLINE_FORMATTED_TAGS, BLOCK_FORMATTED_TAGS, getFirstOfAncestors } from './dom'
+import {
+	getMainParentBlock,
+	INLINE_FORMATTED_TAGS,
+	BLOCK_FORMATTED_TAGS,
+	getFirstOfAncestors
+} from './dom'
 import { isBlockTagName } from './block-marks'
+import { findAndTransform } from '../transforms/transform'
 
 /**
  * Class name for injected mark spans
@@ -21,12 +27,17 @@ export class FocusMarkManager {
 	private activeBlock: HTMLElement | null = null
 	spanRefs: Array<HTMLElement> = []
 	private spanObserver: MutationObserver | null = null
+	private editableRef: HTMLElement | null = null
 
 	constructor() {
-		if (typeof window === 'undefined' || !window.document) return // to prevent sudden 500 errors. why this?
+		if (typeof window === 'undefined' || !window.document) return // to prevent sudden 500 errors. why?
+		// issue: onInput can't fire on a child of contentEditable (bubbling stops at contentEditable boundary)
+		// obersever on each span for content changes failed (if emptied, span removed and no mutation observed)
+		// observing the activeInline/activeBlock for childList changes fires after onInput, 
+		// which is too late because spans must mirror before onInput works on the changed content
 
 		// Create observer for detecting span content changes
-		this.spanObserver = new MutationObserver((mutations) => {
+		this.spanObserver = new MutationObserver(mutations => {
 			for (const mutation of mutations) {
 				if (mutation.type === 'characterData' || mutation.type === 'childList') {
 					const target = mutation.target
@@ -53,6 +64,7 @@ export class FocusMarkManager {
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
 	update(selection: Selection, root: HTMLElement): void {
+		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
 
 		// 1. Find which inline/block elements contain the cursor
@@ -282,7 +294,7 @@ export class FocusMarkManager {
 		if (!formattedElement || !INLINE_FORMATTED_TAGS.includes(formattedElement.tagName as any)) {
 			return
 		}
-		debugger
+
 		// Mirror edits: sync opening ↔ closing spans
 		// Inline elements have 2 spans (opening + closing), block elements have 1 span (prefix only)
 		// const spans = formattedElement.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
@@ -310,6 +322,10 @@ export class FocusMarkManager {
 		const textNode = document.createTextNode(fullText)
 		formattedElement.replaceWith(textNode)
 
+		// Trigger pattern detection on unwrapped text
+		if (this.editableRef) {
+			findAndTransform(this.editableRef)
+		}
 		// Restore cursor position in the new text node
 		// this.restoreCursor(textNode, cursorOffset, selection)
 
