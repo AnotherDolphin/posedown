@@ -1,3 +1,5 @@
 - focus spans must mirror one/another's edits (must be identical) for inline els
 - backspacing on `**bold**..` makes the marker go after b `*b|old..`
-- must hide and override default LI html marker; bad UX when md delimiter is also displayed
+- must hide and override default LI html marker; bad UX when md FocusMarks delimiter is also displayed
+- focusing on a list item should focus the end not the focus span
+- live marks

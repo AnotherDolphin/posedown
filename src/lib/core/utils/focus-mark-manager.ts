@@ -20,6 +20,30 @@ export class FocusMarkManager {
 	private activeInline: HTMLElement | null = null
 	private activeBlock: HTMLElement | null = null
 	spanRefs: Array<HTMLElement> = []
+	private spanObserver: MutationObserver | null = null
+
+	constructor() {
+		// Create observer for detecting span content changes
+		this.spanObserver = new MutationObserver((mutations) => {
+			for (const mutation of mutations) {
+				if (mutation.type === 'characterData' || mutation.type === 'childList') {
+					const target = mutation.target
+					// Find which span was edited (target could be text node inside span)
+					const editedSpan = target.nodeType === Node.TEXT_NODE
+						? target.parentElement
+						: target as HTMLElement
+
+					if (editedSpan && this.spanRefs.includes(editedSpan)) {
+						const selection = window.getSelection()
+						if (selection) {
+							this.handleSpanEdit(editedSpan, selection)
+						}
+						break // Only handle first mutation
+					}
+				}
+			}
+		})
+	}
 
 	/**
 	 * Main update method - call this on selection change.
@@ -105,6 +129,12 @@ export class FocusMarkManager {
 
 		// Track injected spans
 		this.spanRefs.push(startSpan, endSpan)
+
+		// Observe spans for content changes
+		if (this.spanObserver) {
+			this.spanObserver.observe(startSpan, { characterData: true, childList: true, subtree: true })
+			this.spanObserver.observe(endSpan, { characterData: true, childList: true, subtree: true })
+		}
 	}
 
 	/**
@@ -129,6 +159,11 @@ export class FocusMarkManager {
 
 		// Track injected span
 		this.spanRefs.push(prefixSpan)
+
+		// Observe span for content changes
+		if (this.spanObserver) {
+			this.spanObserver.observe(prefixSpan, { characterData: true, childList: true, subtree: true })
+		}
 	}
 
 	/**
@@ -137,6 +172,11 @@ export class FocusMarkManager {
 	private ejectMarks(element: HTMLElement): void {
 		// Early exit if element was removed from DOM
 		if (!element.isConnected) return
+
+		// Disconnect observer before removing spans
+		if (this.spanObserver) {
+			this.spanObserver.disconnect()
+		}
 
 		// Remove all mark spans
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
@@ -230,7 +270,7 @@ export class FocusMarkManager {
 
 	/**
 	 * Public method called when user edits a focus mark span.
-	 * Unwraps the formatted element to plain text, preserving cursor position.
+	 * Mirrors the edit to the corresponding span (opening ↔ closing), then unwraps.
 	 * Called from richEditorState.svelte.ts onInput when e.target is a focus mark span.
 	 */
 	public handleSpanEdit(span: HTMLElement, selection: Selection): void {
@@ -239,11 +279,28 @@ export class FocusMarkManager {
 		if (!formattedElement || !INLINE_FORMATTED_TAGS.includes(formattedElement.tagName as any)) {
 			return
 		}
+		debugger
+		// Mirror edits: sync opening ↔ closing spans
+		// Inline elements have 2 spans (opening + closing), block elements have 1 span (prefix only)
+		// const spans = formattedElement.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
+		if (this.spanRefs.length === 2) {
+			const openingSpan = this.spanRefs[0] as HTMLElement
+			const closingSpan = this.spanRefs[1] as HTMLElement
+
+			// Determine which span was edited and sync the other
+			if (span === openingSpan) {
+				// User edited opening span → update closing span to match
+				closingSpan.textContent = openingSpan.textContent
+			} else if (span === closingSpan) {
+				// User edited closing span → update opening span to match
+				openingSpan.textContent = closingSpan.textContent
+			}
+		}
 
 		// Calculate cursor offset before unwrapping
 		const cursorOffset = this.calculateCursorOffset(formattedElement, selection)
 		// Clear active span references
-		this.spanRefs = []
+		this.spanRefs = [] // will be set again by rest of onInput flow
 
 		// Unwrap: Extract all text (including edited delimiter) and replace with plain text node
 		const fullText = formattedElement.textContent || ''
@@ -251,7 +308,7 @@ export class FocusMarkManager {
 		formattedElement.replaceWith(textNode)
 
 		// Restore cursor position in the new text node
-		this.restoreCursor(textNode, cursorOffset, selection)
+		// this.restoreCursor(textNode, cursorOffset, selection)
 
 		// Clean up our active references (element is gone)
 		if (this.activeInline === formattedElement) {

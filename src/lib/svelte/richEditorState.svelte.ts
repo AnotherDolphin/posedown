@@ -183,19 +183,8 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return
 
-		// Check if cursor is inside a focus mark span
-		const focusedSpan = this.focusMarkManager.spanRefs.find((span, _) =>
-			span.contains(selection.anchorNode)
-		)
-
-		if (focusedSpan) {
-			this.focusMarkManager.handleSpanEdit(focusedSpan, selection)
-			this.editableRef.normalize()
-			// After unwrapping, save history and return early
-			// Do NOT run pattern detection - user intentionally made delimiters invalid
-			// this.history.push(this.editableRef)
-			// return
-		}
+		// Note: Focus mark span edits are handled by MutationObserver in FocusMarkManager
+		// The observer automatically calls handleSpanEdit when a span's content changes
 
 		// this was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
 		// also, a side effect of this code is that emptying a single child automatically makes it a P (even w/o ctrl+a)
@@ -247,8 +236,7 @@ export class RichEditorState {
 
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
-			// except if last edit was in a span then always show focus marks
-			if (!focusedSpan) this.skipNextFocusMarks = true
+			this.skipNextFocusMarks = true
 
 			this.history.push(this.editableRef)
 			return
