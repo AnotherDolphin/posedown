@@ -23,15 +23,18 @@ export class FocusMarkManager {
 	private spanObserver: MutationObserver | null = null
 
 	constructor() {
+		if (typeof window === 'undefined' || !window.document) return // to prevent sudden 500 errors. why this?
+
 		// Create observer for detecting span content changes
 		this.spanObserver = new MutationObserver((mutations) => {
 			for (const mutation of mutations) {
 				if (mutation.type === 'characterData' || mutation.type === 'childList') {
 					const target = mutation.target
 					// Find which span was edited (target could be text node inside span)
-					const editedSpan = target.nodeType === Node.TEXT_NODE
-						? target.parentElement
-						: target as HTMLElement
+					const editedSpan =
+						target.nodeType === Node.TEXT_NODE
+							? (target.parentElement as HTMLElement)
+							: (target as HTMLElement)
 
 					if (editedSpan && this.spanRefs.includes(editedSpan)) {
 						const selection = window.getSelection()

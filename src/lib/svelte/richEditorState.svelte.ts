@@ -28,6 +28,7 @@ import {
 import { setCaretAtEnd, setCaretAfterExit, setCaretAfter } from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
 import { FOCUS_MARK_CLASS, FocusMarkManager } from '../core/utils/focus-mark-manager'
+import { findAndTransform } from '$lib/core/transforms/transform'
 
 // handle, enter on list, manually entering md syntax
 // reason for observer reinteg. node level tree updates,
@@ -180,60 +181,9 @@ export class RichEditorState {
 	// inline markdown detection, transformation, and post-render cursor pos
 	private onInput = (e: Event) => {
 		this.isDirty = true
-		const selection = window.getSelection()
-		if (!selection || !selection.anchorNode || !this.editableRef) return
+		if (!this.editableRef) return
 
-		// Note: Focus mark span edits are handled by MutationObserver in FocusMarkManager
-		// The observer automatically calls handleSpanEdit when a span's content changes
-
-		// this was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
-		// also, a side effect of this code is that emptying a single child automatically makes it a P (even w/o ctrl+a)
-		// Guard clause: ensure editor always has at least <p><br></p>
-		// if (isEditorEmpty(this.editableRef)) {
-		// 	preserveOneChild(this.editableRef)
-		// 	this.history.push(this.editableRef)
-		// 	return
-		// }
-
-		const node = selection.anchorNode
-
-		// issue: detect if anchor node is editableRef i.e. multiple nodes werer selected
-		// instead of the 'block' getting replaced, we want to replace all selected blocks
-
-		let block = getMainParentBlock(node, this.editableRef)
-		if (!block) return
-
-		// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
-		// This prevents focus mark spans from being treated as content during transformation.
-		const cleanBlock = block.cloneNode(true) as HTMLElement
-		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-		cleanBlock.normalize() // Merge fragmented text nodes
-
-		// Check for block patterns, with special handling for list patterns inside LIs
-		const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
-		const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
-
-		if (hasBlockPattern || hasInlinePattern) {
-			const contentInMd = htmlBlockToMarkdown(cleanBlock)
-
-			// NOTE: When user edits a focus mark span (e.g., changes ** to *),
-			// this will parse invalid markdown (e.g., "*text**") and automatically
-			// unwrap the formatting. No special "unwrap" logic needed!
-
-			// Parse back to DOM
-			const { fragment, isInline } = markdownToDomFragment(contentInMd)
-			const lastNodeInFragment = fragment.lastChild
-			if (!fragment || !lastNodeInFragment) return
-
-			// Swap DOM and restore cursor using smartReplaceChildren
-			if (isInline) {
-				// Pass pattern match info for accurate cursor positioning
-				smartReplaceChildren(block, fragment, selection, hasInlinePattern)
-			} else {
-				block.replaceWith(fragment)
-				setCaretAtEnd(lastNodeInFragment, selection)
-			}
-
+		if (findAndTransform(this.editableRef)) {
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
 			this.skipNextFocusMarks = true
