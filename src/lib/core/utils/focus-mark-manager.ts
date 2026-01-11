@@ -115,25 +115,47 @@ export class FocusMarkManager {
 	 */
 	private findFocusedInline(selection: Selection, root: HTMLElement): HTMLElement | null {
 		if (!selection.anchorNode) return null
-		// First check if cursor is inside a formatted element (existing behavior)
 
-		// issue#34: this give priority to parent elements even if the caret is at either edge
-		// of a child element that should be prioritized instead
-		// i.e. when the caret at `This is bold and |italic text`
-		// the html is:
-		// <p>This is <strong><span class="pd-focus-mark">**</span>bold and <em>italic</em><span class="pd-focus-mark">**</span></strong> text</p>
-		// but it shoud show the focus marks around the italic instead of the strong
+		const anchorNode = selection.anchorNode
+		const offset = selection.anchorOffset
 
+		// Check if cursor is inside a formatted element
 		const insideFormatted = getFirstOfAncestors(
-			selection.anchorNode,
+			anchorNode,
 			root,
 			INLINE_FORMATTED_TAGS
 		) as HTMLElement | null
+
+		// If inside formatted element, check if cursor is at edge with a more specific sibling
+		if (insideFormatted && anchorNode.nodeType === Node.TEXT_NODE) {
+			const textNode = anchorNode as Text
+
+			// At start of text node - check previous sibling for formatted element
+			if (offset === 0 && textNode.previousSibling) {
+				const prev = textNode.previousSibling
+				if (prev.nodeType === Node.ELEMENT_NODE) {
+					const el = prev as HTMLElement
+					if (INLINE_FORMATTED_TAGS.includes(el.tagName as any)) {
+						return el // Prioritize sibling over parent
+					}
+				}
+			}
+
+			// At end of text node - check next sibling for formatted element
+			if (offset === textNode.textContent?.length && textNode.nextSibling) {
+				const next = textNode.nextSibling
+				if (next.nodeType === Node.ELEMENT_NODE) {
+					const el = next as HTMLElement
+					if (INLINE_FORMATTED_TAGS.includes(el.tagName as any)) {
+						return el // Prioritize sibling over parent
+					}
+				}
+			}
+		}
+
 		if (insideFormatted) return insideFormatted
 
-		// Check if cursor is at the edge of an adjacent formatted element
-		const anchorNode = selection.anchorNode
-		const offset = selection.anchorOffset
+		// Check if cursor is at the edge of an adjacent formatted element (not inside any formatted element)
 
 		// Case A: Cursor is in a text node - check adjacent siblings
 		if (anchorNode.nodeType === Node.TEXT_NODE) {
@@ -152,8 +174,6 @@ export class FocusMarkManager {
 
 			// At end of text node - check next sibling
 			if (offset === textNode.textContent?.length && textNode.nextSibling) {
-				console.log('end of', textNode)
-				
 				const next = textNode.nextSibling
 				if (next.nodeType === Node.ELEMENT_NODE) {
 					const el = next as HTMLElement
