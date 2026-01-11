@@ -6,7 +6,10 @@ import {
 	htmlBlockToMarkdown,
 	domFragmentToMarkdown
 } from '$lib/core/transforms/ast-utils'
-import { findFirstMarkdownMatch } from '$lib/core/utils/inline-patterns'
+import {
+	findFirstMarkdownMatch,
+	SUPPORTED_INLINE_DELIMITERS
+} from '$lib/core/utils/inline-patterns'
 import { isBlockPattern, isListPattern } from '$lib/core/utils/block-patterns'
 import {
 	preserveOneChild,
@@ -217,8 +220,9 @@ export class RichEditorState {
 				const editedSpan = this.focusMarkManager.spanRefs.find(
 					span => span.textContent !== delimiter
 				)
+
 				const mirrorSpan = this.focusMarkManager.spanRefs.find(span => span !== editedSpan)
-				if (editedSpan && mirrorSpan) {
+				if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
 					mirrorSpan.textContent = editedSpan.textContent
 				}
 				// return
@@ -227,9 +231,8 @@ export class RichEditorState {
 			// convert content to markdown and back to html to normalize
 			const md = htmlToMarkdown(this.focusMarkManager.activeInline.innerHTML)
 			const { fragment } = markdownToDomFragment(md)
-			console.log(fragment.childNodes) // has leftover span if one was edited away
 
-			// replace activeInline in the dom and 
+			// replace activeInline in the dom and
 			this.focusMarkManager.activeInline.replaceWith(fragment)
 			this.focusMarkManager.activeInline = null // should be handled by selectionchange if needed
 			this.focusMarkManager.spanRefs = []
@@ -245,7 +248,7 @@ export class RichEditorState {
 		if (findAndTransform(this.editableRef)) {
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
-			// this.skipNextFocusMarks = true
+			this.skipNextFocusMarks = true
 
 			this.history.push(this.editableRef)
 			return
@@ -414,15 +417,18 @@ export class RichEditorState {
 		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements
 		if (this.marks !== null) this.marks = null // clear on displacement
 
+		debugger
+
 		let node = selection.anchorNode
 		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length) {
 			return
 		}
 
-		// Find and mark the outmost parent ending at caret (to be exited on keydown)
+		// Find and mark the outermost parent ending at caret (to be exited on keydown)
 		let parent = node.parentNode
-		while (parent && node == parent.lastChild && isStyledTagName(parent.nodeName)) {
-			this.marks = this.marks ? [...this.marks, parent] : [parent]
+		while (parent && node == parent.lastChild) { // now detects further nesting to fix focus mark span issues
+			if (isStyledTagName(parent.nodeName))
+				this.marks = this.marks ? [...this.marks, parent] : [parent]
 			node = parent
 			parent = node.parentNode
 		}
