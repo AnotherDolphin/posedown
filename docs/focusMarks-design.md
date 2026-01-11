@@ -94,30 +94,28 @@ Reset skipNextFocusMarks = false
 ```
 User changes ** to * in focus mark span
   ↓
-onInput() fires
+onInput() fires in richEditorState.svelte.ts
   ↓
-Check if event target is inside spanRefs array
-  ↓ (yes, found focused span)
-focusMarkManager.handleSpanEdit(span, selection)
+Check if activeInline contains cursor OR spans modified/disconnected
+  ↓ (yes, editing detected)
+Mirror edited span to its pair (if valid delimiter)
   ↓
-Calculate cursor offset within <strong> element
+Convert activeInline.innerHTML to markdown (includes span contents)
   ↓
-Extract full text content: "*text**"
+Transform markdown back to HTML (fragment)
   ↓
-Unwrap: replace <strong> with plain text node
+Replace activeInline with fragment
   ↓
-Restore cursor position in text node
+Clear spanRefs, set activeInline = null
   ↓
-Clear spanRefs, update activeInline = null
+Early return from span edit handler
   ↓
-Normalize text nodes
-  ↓
-onInput continues: pattern detection runs on "*text**"
-  ↓
-Pattern detection: no match (mismatched delimiters)
-  ↓
-Result: remains as plain text "*text**"
+Result: markdown in fragment determines outcome
+  - Valid pattern (e.g., "*text*") → transforms to <em>
+  - Invalid pattern (e.g., "*text**") → stays as plain text
 ```
+
+**Note:** Current implementation handles span editing in `richEditorState.svelte.ts` directly, not via `FocusMarkManager.handleSpanEdit()`. See `focusMarks-status.md` for details.
 
 **Real-time transformation example:**
 ```
@@ -471,74 +469,41 @@ em > .pd-focus-mark {
 
 ### 1. richEditorState.svelte.ts
 
-**Initialization (line 45):**
-```typescript
-private focusMarkManager = new FocusMarkManager()
-```
+**Key Integration Points:**
+- **Initialization:** Creates `FocusMarkManager` instance (line 46)
+- **Selection handler:** Calls `focusMarkManager.update()` on selection changes, respects `skipNextFocusMarks` flag (lines ~398-410)
+- **Input handler - span editing:** Detects span modifications, mirrors edits, converts to markdown, replaces DOM (lines 197-261)
+- **Input handler - span stripping:** Clones block and removes focus mark spans before pattern detection (in normal flow)
+- **Sets skipNextFocusMarks:** After pattern transformations to prevent marks on newly created elements (line 251)
 
-**Selection handling (lines 402-414):**
-```typescript
-private onSelectionChange = (e: Event) => {
-  const selection = window.getSelection()
-  if (!selection || !selection.anchorNode) return
-  if (!this.editableRef?.contains(selection.anchorNode)) return
+**See:** `src/lib/svelte/richEditorState.svelte.ts`
 
-  // Skip if transformation just occurred
-  if (this.skipNextFocusMarks) {
-    this.skipNextFocusMarks = false
-  } else {
-    this.focusMarkManager.update(selection, this.editableRef)
-  }
+### 2. focus-mark-manager.ts
 
-  // ... exit marks tracking logic ...
-}
-```
+**Key Methods:**
+- **`update()`:** Main entry point, finds focused elements, manages injection/ejection
+- **`findFocusedInline()`:** Detects cursor inside OR adjacent to formatted elements (includes edge detection)
+- **`injectInlineMarks()`:** Creates opening/closing mark spans
+- **`extractDelimiters()`:** Reverse-engineers markdown delimiters from HTML elements
 
-**Input handling - span edit detection (lines 187-198):**
-```typescript
-private onInput = (e: Event) => {
-  this.isDirty = true
-  const selection = window.getSelection()
-  if (!selection || !selection.anchorNode || !this.editableRef) return
-
-  // Check if cursor is inside a focus mark span
-  const focusedSpan = this.focusMarkManager.spanRefs.find((span, _) =>
-    span.contains(selection.anchorNode)
-  )
-
-  if (focusedSpan) {
-    this.focusMarkManager.handleSpanEdit(focusedSpan, selection)
-    this.editableRef.normalize()
-    // Pattern detection continues below (NOT early return)
-  }
-
-  // ... rest of onInput logic ...
-}
-```
-
-**Input handling - span stripping (lines 219-221):**
-```typescript
-// Strip .pd-focus-mark spans before pattern detection
-const cleanBlock = block.cloneNode(true) as HTMLElement
-cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-cleanBlock.normalize()
-// Use cleanBlock for pattern detection
-```
-
-### 2. RichEditor.svelte
-
-**CSS (lines 112-130):**
-```css
-:global(.pd-focus-mark) { /* styling */ }
-```
+**See:** `src/lib/core/utils/focus-mark-manager.ts`
 
 ### 3. dom.ts
 
-**Tag definitions:**
-```typescript
-export const INLINE_FORMATTED_TAGS = [...]
-export const BLOCK_FORMATTED_TAGS = [...]
-```
+**Exports:**
+- `INLINE_FORMATTED_TAGS` - List of inline formatted tag names
+- `BLOCK_FORMATTED_TAGS` - List of block formatted tag names
+- `getFirstOfAncestors()` - Walks DOM tree to find matching parent
+
+**See:** `src/lib/core/utils/dom.ts`
+
+### 4. RichEditor.svelte
+
+**CSS Styling:**
+- `.pd-focus-mark` class with monospace font, gray color, opacity
+- Resets for inherited formatting (font-weight, font-style)
+
+**See:** `src/lib/svelte/RichEditor.svelte`
 
 ## Known Limitations & Open Issues
 
@@ -692,22 +657,31 @@ console.log('[FocusMarks] Extracted:', { start, end, markdown, text })
 
 ---
 
-**Last Updated:** 2026-01-09
-**Feature Status:** ⏳ Core inline features working, block editing not implemented, comprehensive testing pending
+**Last Updated:** 2026-01-11
+**Feature Status:** ⏳ Core inline features partially working, significant cursor positioning issues, see `focusMarks-status.md` for current state
 **Code Locations:**
-- `src/lib/core/utils/focus-mark-manager.ts` - Core FocusMarkManager class
-- `src/lib/svelte/richEditorState.svelte.ts` - Integration and event handling
+- `src/lib/core/utils/focus-mark-manager.ts` - Core FocusMarkManager class (partially disabled)
+- `src/lib/svelte/richEditorState.svelte.ts` - Integration and event handling (contains most logic now)
 - `src/lib/core/utils/dom.ts` - Helper functions (getFirstOfAncestors, getRangeFromBlockOffsets)
 - `src/lib/svelte/RichEditor.svelte` - CSS styling
 
 **What Works:**
 - Inline mark injection/ejection (bold, italic, code, strikethrough, del)
 - Block mark injection for headings, blockquotes, list items
-- Inline mark editing with real-time transformation
-- Cursor position preservation during transformations
+- Span mirroring during editing
 - skipNextFocusMarks flag prevents marks on just-transformed content
+- Edge detection for adjacent formatted elements (unreliable)
+
+**What's Broken:**
+- Cursor positioning after span edits (critical issue)
+- Inconsistent backspace/delete behavior in spans
+- Edge detection doesn't always work
 
 **What Doesn't Work Yet:**
 - Block mark editing (changing heading levels, unwrapping blocks)
 - Multi-line code blocks
-- Many edge cases not thoroughly tested (see Testing Checklist)
+- List item focus behavior
+- Hide default LI HTML markers
+
+**⚠️ Implementation Note:**
+The current implementation temporarily places span editing logic in `richEditorState.svelte.ts` onInput handler (instead of `FocusMarkManager.handleSpanEdit()`) as a development strategy to address MutationObserver timing issues. This allows for rapid iteration and testing. Once the behavior is stable and working correctly, the logic will be refactored back into `focus-mark-manager.ts` to maintain clean architecture and encapsulation. See `docs/issues/focusMarks-status.md` for detailed current status and issues.
