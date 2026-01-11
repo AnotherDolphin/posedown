@@ -110,10 +110,90 @@ export class FocusMarkManager {
 	/**
 	 * Find the closest inline formatted parent element containing the cursor.
 	 * Only considers INLINE_FORMATTED_TAGS (strong, em, code, s, del).
+	 *
+	 * Also detects when cursor is at the edge of a formatted element (in adjacent text node).
 	 */
 	private findFocusedInline(selection: Selection, root: HTMLElement): HTMLElement | null {
 		if (!selection.anchorNode) return null
-		return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS) as HTMLElement | null
+		// First check if cursor is inside a formatted element (existing behavior)
+
+		// issue#34: this give priority to parent elements even if the caret is at either edge
+		// of a child element that should be prioritized instead
+		// i.e. when the caret at `This is bold and |italic text`
+		// the html is:
+		// <p>This is <strong><span class="pd-focus-mark">**</span>bold and <em>italic</em><span class="pd-focus-mark">**</span></strong> text</p>
+		// but it shoud show the focus marks around the italic instead of the strong
+
+		const insideFormatted = getFirstOfAncestors(
+			selection.anchorNode,
+			root,
+			INLINE_FORMATTED_TAGS
+		) as HTMLElement | null
+		if (insideFormatted) return insideFormatted
+
+		// Check if cursor is at the edge of an adjacent formatted element
+		const anchorNode = selection.anchorNode
+		const offset = selection.anchorOffset
+
+		// Case A: Cursor is in a text node - check adjacent siblings
+		if (anchorNode.nodeType === Node.TEXT_NODE) {
+			const textNode = anchorNode as Text
+
+			// At start of text node (offset 0) - check previous sibling
+			if (offset === 0 && textNode.previousSibling) {
+				const prev = textNode.previousSibling
+				if (prev.nodeType === Node.ELEMENT_NODE) {
+					const el = prev as HTMLElement
+					if (INLINE_FORMATTED_TAGS.includes(el.tagName as any)) {
+						return el
+					}
+				}
+			}
+
+			// At end of text node - check next sibling
+			if (offset === textNode.textContent?.length && textNode.nextSibling) {
+				console.log('end of', textNode)
+				
+				const next = textNode.nextSibling
+				if (next.nodeType === Node.ELEMENT_NODE) {
+					const el = next as HTMLElement
+					if (INLINE_FORMATTED_TAGS.includes(el.tagName as any)) {
+						return el
+					}
+				}
+			}
+		}
+
+		// Case B: Cursor is directly in a container element (e.g., P)
+		// anchorOffset represents the child index in this case
+		else if (anchorNode.nodeType === Node.ELEMENT_NODE) {
+			const containerEl = anchorNode as HTMLElement
+			const childNodes = containerEl.childNodes
+
+			// Cursor before a child (e.g., <p>|<em>word</em></p>)
+			if (offset < childNodes.length) {
+				const childAtCursor = childNodes[offset]
+				if (childAtCursor.nodeType === Node.ELEMENT_NODE) {
+					const el = childAtCursor as HTMLElement
+					if (INLINE_FORMATTED_TAGS.includes(el.tagName as any)) {
+						return el
+					}
+				}
+			}
+
+			// Cursor after a child (e.g., <p><em>word</em>|</p>)
+			if (offset > 0 && offset <= childNodes.length) {
+				const childBeforeCursor = childNodes[offset - 1]
+				if (childBeforeCursor.nodeType === Node.ELEMENT_NODE) {
+					const el = childBeforeCursor as HTMLElement
+					if (INLINE_FORMATTED_TAGS.includes(el.tagName as any)) {
+						return el
+					}
+				}
+			}
+		}
+
+		return null
 	}
 
 	/**

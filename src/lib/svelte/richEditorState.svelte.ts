@@ -417,9 +417,8 @@ export class RichEditorState {
 		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements
 		if (this.marks !== null) this.marks = null // clear on displacement
 
-		debugger
-
 		let node = selection.anchorNode
+		
 		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length) {
 			return
 		}
