@@ -37,7 +37,7 @@ export const deriveChildNodeId = (node: Node): string | null => {
  * - Excludes U (underline) which is HTML-only, not standard markdown
  */
 export const INLINE_FORMATTED_TAGS = ['STRONG', 'EM', 'CODE', 'S', 'DEL'] as const
-export const isStyledTagName = (tagName: string): tagName is (typeof INLINE_FORMATTED_TAGS)[number] => {
+export const isInlineFormattedElement = (tagName: string): tagName is (typeof INLINE_FORMATTED_TAGS)[number] => {
 	return (INLINE_FORMATTED_TAGS as readonly string[]).includes(tagName)
 }
 
