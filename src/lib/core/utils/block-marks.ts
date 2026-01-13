@@ -76,7 +76,6 @@ export const mergeFirstParagraph = (
 	insertableBlocks: DocumentFragment
 ) => {
 	if (insertableBlocks.children.length < 1) return null
-	debugger
 	const nodesInFirstBlock = insertableBlocks.children[0].childNodes
 	let lastNodeToInsert = nodesInFirstBlock[nodesInFirstBlock.length - 1]
 	const nodesAsFragment = document.createDocumentFragment()

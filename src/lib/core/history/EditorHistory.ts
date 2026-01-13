@@ -59,7 +59,8 @@ export class EditorHistory {
 
 	/**
 	 * Saves the current state of the editor to history.
-	 * Call this before operations that should be undoable.
+	 * Call this before operations that should be undoable
+	 * and safe to return to.
 	 *
 	 * @param element - The contenteditable element to save
 	 */

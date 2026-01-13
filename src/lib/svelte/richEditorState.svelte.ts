@@ -217,10 +217,10 @@ export class RichEditorState {
 			this.focusMarkManager.activeInline &&
 			(spanModified || spanDisconnected || cursorInsideSpan)
 		) {
-
-			console.log('asdf', {spanDisconnected, spanModified, cursorInsideSpan})
+			this.skipNextFocusMarks = true // prevent re-adding marks during this operation
+			console.log('asdf', { spanDisconnected, spanModified, cursorInsideSpan })
 			// issue: disconnected caret breaks the range api used below ❌
-			
+
 			// 1. if BOTH disconnected OR any span is empty; remove both
 			// Note: Only check if both disconnected to avoid removing spans during normal editing
 
@@ -228,6 +228,7 @@ export class RichEditorState {
 			// but if we check for any disconnected (which we MUST to disconnect the other),
 			// then backspacing once remove the whole span even if it has more chars
 			// and in that case 3 of spanDisconnected, spanModified, cursorInsideSpan are all true; how?
+// issueZ: spanRefs are outdated causing false negatives and span non-removal ❌
 			const bothDisconnected = this.focusMarkManager.spanRefs.every(span => !span.isConnected)
 			const anyEmpty = this.focusMarkManager.spanRefs.some(
 				span => !span.textContent || span.textContent.trim() === ''
@@ -268,85 +269,59 @@ export class RichEditorState {
 			// 1. extract content within activeInline without the delimiters and deformat outer tag
 			const cleanClone = this.focusMarkManager.activeInline.cloneNode(true) as HTMLElement
 			// 1.1 remove delimiters
-			cleanClone.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-			// 1.2 normalize style tags
+			// cleanClone.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
 			cleanClone.normalize() // Merge fragmented text nodes
-			// 1.3 convert to md to preserve nested formatting
+			// 1.2 convert insides to md to preserve nested formatting
 			const md = htmlToMarkdown(cleanClone.innerHTML)
 			const { fragment } = markdownToDomFragment(md)
 			// 1.4 replace the formatted element within activeInline with the fragment (leaving the delimiters, and hence caret, in the dom)
-			const range = document.createRange()
-			range.setStartAfter(this.focusMarkManager.spanRefs[0]) // issue: if disconnected throws unhandled error
-			range.setEndBefore(this.focusMarkManager.spanRefs[1])
-			range.deleteContents()
+			// const range = document.createRange()
+			// range.setStartAfter(this.focusMarkManager.spanRefs[0]) // issue: if disconnected throws unhandled error
+			// range.setEndBefore(this.focusMarkManager.spanRefs[1])
+			// range.deleteContents()
 			// issue21: caret style persists even though the formatted tag has been ejected
 			// for ex. ejected <strong> parent not in frag but returns on range.insertNode
 			// range.insertNode(fragment)
 
-			// proposal: instead of 
-			// range.deleteContents() 
+			// proposal: instead of
+			// range.deleteContents()
 			// range.insertNode(fragment)
 			// use smartReplaceChildren and set the correct parameters
-			// > smartReplace will still remove the entirety of the parent tag, 
+			// > smartReplace will still remove the entirety of the parent tag,
 			// > but attempts to restore cursor to its repalcement children
 			// > However, the function is expecting pattern object, but we don't want to match a new pattern
 			// > we need to adjust the function to be flexible in that regard if needed
-			
 
 			// Escape caret style to prevent formatting carryover
 			// if (lastNode && selection) {
 			// await escapeCaretStyle(this.focusMarkManager.activeInline, selection, this.editableRef)
 			// }
 
-			// 2. remove activeInline from DOM
-			// this.focusMarkManager.activeInline.remove()
-			// 3. process md content back to html fragment
-			//
+			// Inject current focus mark clones so cursor can restore into them
+			fragment.prepend(this.focusMarkManager.spanRefs[0].cloneNode(true))
+			fragment.append(this.focusMarkManager.spanRefs[1].cloneNode(true))
 
-			// console.log(toBeEjected.innerHTML, this.focusMarkManager.activeDelimiter)
+			// Build full block fragment with activeInline replaced
+			// debugger
+			const parentBlock = this.focusMarkManager.activeInline.parentElement!
+			const blockFragment = document.createDocumentFragment()
+			Array.from(parentBlock.childNodes).forEach(child => {
+				if (child === this.focusMarkManager.activeInline) {
+					blockFragment.append(...fragment.childNodes)
+				} else {
+					blockFragment.append(child.cloneNode(true))
+				}
+			})
+			smartReplaceChildren(parentBlock, blockFragment, selection)
+			this.history.push(this.editableRef)
+			// update focusManager states so it can unfocus etc.!!!!!!!! maybe use .update to recognize the newly injected marks
 
-			// cleanBlock.innerHTML =  this.focusMarkManager.activeDelimiter+ cleanBlock.innerHTML+this.focusMarkManager.activeDelimiter
-
-			// convert content to markdown and back to html to normalize
-			// const md = htmlToMarkdown(toBeEjected.innerHTML)
-			// const { fragment } = markdownToDomFragment(md)
-
-			// 4. reinsert new delimiters
-			// Check if fragment is a single Node => append and prepend new delimiters to it
-			// Otherwise if fragment is a DocumentFragment => append and prepend new delimiters to child nodes
-			// if (fragment.childNodes.length === 1 && fragment.firstChild instanceof Element) {
-			// 	const node = fragment.firstChild as Element
-			// 	node.prepend(this.focusMarkManager.activeDelimiter)
-			// 	node.append(this.focusMarkManager.activeDelimiter)
-			// } else {
-			// 	const delimiter = document.createTextNode(this.focusMarkManager.activeDelimiter)
-			// 	fragment.prepend(delimiter.cloneNode(true))
-			// 	fragment.append(delimiter.cloneNode(true))
-			// }
-
-			// replace activeInline in the dom and
-			// const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
-
-			// this.focusMarkManager.activeInline.replaceWith(fragment)
-			// smartReplaceChildren(
-			// 	this.focusMarkManager.activeInline,
-			// 	fragment,
-			// 	selection,
-			// 	hasInlinePattern
-			// )
-			// return
-			// this.focusMarkManager.activeInline = null // should be handled by selectionchange if needed
-			// this.focusMarkManager.spanRefs = []
-
-			// based on edit these steps may place the caret outside the activeInline (before it on P block), so it needs to be refocused so spanMarks reappear
-			// this.focusMarkManager.injectInlineMarks(fragment as HTMLElement)
-			// setCaretAfterExit(fragment, selection)
-			// return
+			return
 		}
 
-		// NORMAL FLOW
-
+		// NORMAL FLOW: check for md patterns and transform
 		if (findAndTransform(this.editableRef)) {
+
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
 			this.skipNextFocusMarks = true
