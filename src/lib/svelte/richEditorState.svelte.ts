@@ -205,13 +205,16 @@ export class RichEditorState {
 		// 2. A span was disconnected (deleted), OR
 		// 3. Cursor is inside a focus mark span (editing delimiter)
 		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
-		const spanModified = this.focusMarkManager.spanRefs.some(
+		const spans = this.focusMarkManager.activeInline
+			? Array.from(
+					this.focusMarkManager.activeInline.querySelectorAll('.' + FOCUS_MARK_CLASS)
+			  ) as HTMLElement[]
+			: []
+		const spanModified = spans.some(
 			span => span.textContent !== this.focusMarkManager.activeDelimiter
 		)
-		const spanDisconnected = this.focusMarkManager.spanRefs.some(span => !span.isConnected)
-		const cursorInsideSpan = this.focusMarkManager.spanRefs.some(span =>
-			span.contains(selection.anchorNode)
-		)
+		const spanDisconnected = spans.some(span => !span.isConnected)
+		const cursorInsideSpan = spans.some(span => span.contains(selection.anchorNode))
 
 		if (
 			this.focusMarkManager.activeInline &&
@@ -228,32 +231,26 @@ export class RichEditorState {
 			// but if we check for any disconnected (which we MUST to disconnect the other),
 			// then backspacing once remove the whole span even if it has more chars
 			// and in that case 3 of spanDisconnected, spanModified, cursorInsideSpan are all true; how?
-// issueZ: spanRefs are outdated causing false negatives and span non-removal ❌
-			const bothDisconnected = this.focusMarkManager.spanRefs.every(span => !span.isConnected)
-			const anyEmpty = this.focusMarkManager.spanRefs.some(
+			// issueZ: spanRefs are outdated causing false negatives and spannon-removal ❌
+			debugger
+			const bothDisconnected = spans.some(span => !span.isConnected)
+			const anyEmpty = spans.some(
 				span => !span.textContent || span.textContent.trim() === ''
 			)
 
 			if (bothDisconnected || anyEmpty) {
-				this.focusMarkManager.spanRefs.forEach(span => span.remove())
+				spans.forEach(span => span.remove())
 				// to be handled in focusMarkManager with other side effects
 				this.focusMarkManager.activeDelimiter = ''
-				// this.focusMarkManager.spanRefs = []
 			}
 			// 2. if one is edited, mirror to the other
-			else if (
-				this.focusMarkManager.spanRefs.length === 2 && // Ensure we have 2 spans before accessing index 1
-				this.focusMarkManager.spanRefs[0].textContent !==
-					this.focusMarkManager.spanRefs[1].textContent
-			) {
+			else if (spans.length === 2 && spans[0].textContent !== spans[1].textContent) {
 				// determine which span was edited (based on selection position)
 				// if selection is at start of activeInline or right before, left span was edited
 				// else right span was edited
 				const delimiter = this.focusMarkManager.activeDelimiter
-				const editedSpan = this.focusMarkManager.spanRefs.find(
-					span => span.textContent !== delimiter
-				)
-				const mirrorSpan = this.focusMarkManager.spanRefs.find(span => span !== editedSpan)
+				const editedSpan = spans.find(span => span.textContent !== delimiter)
+				const mirrorSpan = spans.find(span => span !== editedSpan)
 				// todo: normaize both spans if invalid delimiters
 
 				if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
@@ -298,8 +295,10 @@ export class RichEditorState {
 			// }
 
 			// Inject current focus mark clones so cursor can restore into them
-			fragment.prepend(this.focusMarkManager.spanRefs[0].cloneNode(true))
-			fragment.append(this.focusMarkManager.spanRefs[1].cloneNode(true))
+			if (spans.length === 2) {
+				fragment.prepend(spans[0].cloneNode(true))
+				fragment.append(spans[1].cloneNode(true))
+			}
 
 			// Build full block fragment with activeInline replaced
 			// debugger
@@ -321,11 +320,9 @@ export class RichEditorState {
 
 		// NORMAL FLOW: check for md patterns and transform
 		if (findAndTransform(this.editableRef)) {
-
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
 			this.skipNextFocusMarks = true
-
 			this.history.push(this.editableRef)
 			return
 		}

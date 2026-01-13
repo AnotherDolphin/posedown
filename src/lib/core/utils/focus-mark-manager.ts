@@ -26,41 +26,19 @@ export const FOCUS_MARK_CLASS = 'pd-focus-mark'
 export class FocusMarkManager {
 	activeInline: HTMLElement | null = null
 	activeBlock: HTMLElement | null = null
-	spanRefs: Array<HTMLElement> = []
 	activeDelimiter: string | null = null
-	private spanObserver: MutationObserver | null = null
 	private editableRef: HTMLElement | null = null
 
 	constructor() {
 		if (typeof window === 'undefined' || !window.document) return // to prevent sudden 500 errors. why?
-		// issue: onInput can't fire on a child of contentEditable (bubbling stops at contentEditable boundary)
-		// obersever on each span for content changes failed (if emptied, span removed and no mutation observed)
-		// observing the activeInline/activeBlock for childList changes fires after onInput, 
-		// which is too late because spans must mirror before onInput works on the changed content
+	}
 
-		// Create observer for detecting span content changes
-		this.spanObserver = new MutationObserver(mutations => {
-			for (const mutation of mutations) {
-				if (mutation.type === 'characterData' || mutation.type === 'childList') {
-					const target = mutation.target
-					console.log('overserve')
-					
-					// Find which span was edited (target could be text node inside span)
-					const editedSpan =
-						target.nodeType === Node.TEXT_NODE
-							? (target.parentElement as HTMLElement)
-							: (target as HTMLElement)
-
-					if (editedSpan && this.spanRefs.includes(editedSpan)) {
-						const selection = window.getSelection()
-						if (selection) {
-							// this.handleSpanEdit(editedSpan, selection)
-						}
-						break // Only handle first mutation
-					}
-				}
-			}
-		})
+	/**
+	 * Get all focus mark spans from an element.
+	 * Always queries the DOM to ensure fresh references.
+	 */
+	private getSpans(element: HTMLElement): HTMLElement[] {
+		return Array.from(element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)) as HTMLElement[]
 	}
 
 	/**
@@ -216,15 +194,6 @@ export class FocusMarkManager {
 		element.prepend(startSpan)
 		element.append(endSpan)
 		this.activeDelimiter = delimiters.start
-
-		// Track injected spans
-		this.spanRefs.push(startSpan, endSpan)
-
-		// Observe spans for content changes
-		if (this.spanObserver) {
-			this.spanObserver.observe(startSpan, { characterData: true, childList: true, subtree: true })
-			this.spanObserver.observe(endSpan, { characterData: true, childList: true, subtree: true })
-		}
 	}
 
 	/**
@@ -246,14 +215,6 @@ export class FocusMarkManager {
 
 		// Inject at start of block
 		element.prepend(prefixSpan)
-
-		// Track injected span
-		this.spanRefs.push(prefixSpan)
-
-		// Observe span for content changes
-		if (this.spanObserver) {
-			this.spanObserver.observe(prefixSpan, { characterData: true, childList: true, subtree: true })
-		}
 	}
 
 	/**
@@ -263,15 +224,9 @@ export class FocusMarkManager {
 		// Early exit if element was removed from DOM
 		if (!element.isConnected) return
 
-		// Disconnect observer before removing spans
-		if (this.spanObserver) {
-			this.spanObserver.disconnect()
-		}
-
 		// Remove all mark spans
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
 		marks.forEach(mark => mark.remove())
-		this.spanRefs = []
 
 		// Merge fragmented text nodes back together
 		element.normalize()
@@ -372,10 +327,10 @@ export class FocusMarkManager {
 
 		// Mirror edits: sync opening ↔ closing spans
 		// Inline elements have 2 spans (opening + closing), block elements have 1 span (prefix only)
-		// const spans = formattedElement.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
-		if (this.spanRefs.length === 2) {
-			const openingSpan = this.spanRefs[0] as HTMLElement
-			const closingSpan = this.spanRefs[1] as HTMLElement
+		const spans = this.getSpans(formattedElement)
+		if (spans.length === 2) {
+			const openingSpan = spans[0]
+			const closingSpan = spans[1]
 
 			// Determine which span was edited and sync the other
 			if (span === openingSpan) {
@@ -389,8 +344,6 @@ export class FocusMarkManager {
 
 		// Calculate cursor offset before unwrapping
 		const cursorOffset = this.calculateCursorOffset(formattedElement, selection)
-		// Clear active span references
-		this.spanRefs = [] // will be set again by rest of onInput flow
 
 		// Unwrap: Extract all text (including edited delimiter) and replace with plain text node
 		const fullText = formattedElement.textContent || ''
