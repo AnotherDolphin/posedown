@@ -28,7 +28,8 @@ focus-mark-manager.ts
 │   ├── activeBlock: HTMLElement | null (currently focused block element)
 │   ├── spanRefs: Array<HTMLElement> (tracks injected spans)
 │   ├── update() → main entry point, detects transitions and manages injection/ejection
-│   ├── findFocusedInline() → uses getFirstOfAncestors() to find closest inline formatted parent
+│   ├── findFocusedInline() → finds inline formatted parent with edge detection (issue#34 fix)
+│   ├── checkTextNodeEdges() → helper: checks if cursor at edge of text node with formatted sibling
 │   ├── findFocusedBlock() → uses getFirstOfAncestors() to find closest block formatted parent
 │   ├── injectInlineMarks() → creates opening/closing mark spans
 │   ├── injectBlockMarks() → creates prefix mark span only
@@ -42,6 +43,7 @@ focus-mark-manager.ts
 dom.ts
 ├── INLINE_FORMATTED_TAGS: TagName[] → ['STRONG', 'EM', 'CODE', 'S', 'DEL']
 ├── BLOCK_FORMATTED_TAGS: TagName[] → ['H1'-'H6', 'BLOCKQUOTE', 'LI']
+├── isInlineFormattedElement() → type guard for inline formatted elements
 ├── getFirstOfAncestors() → walks DOM tree to find first matching parent element
 └── getRangeFromBlockOffsets() → traverses DOM depth-first to find correct cursor position
 ```

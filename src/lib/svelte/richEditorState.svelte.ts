@@ -13,7 +13,7 @@ import {
 import { isBlockPattern, isListPattern } from '$lib/core/utils/block-patterns'
 import {
 	preserveOneChild,
-	isStyledTagName,
+	isInlineFormattedElement,
 	insertAfter,
 	getMainParentBlock,
 	shouldAllowListTransform,
@@ -483,15 +483,15 @@ export class RichEditorState {
 		if (this.marks !== null) this.marks = null // clear on displacement
 
 		let node = selection.anchorNode
+		
 		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length) {
 			return
 		}
 
 		// Find and mark the outermost parent ending at caret (to be exited on keydown)
 		let parent = node.parentNode
-		while (parent && node == parent.lastChild) {
-			// now detects further nesting to fix focus mark span issues
-			if (isStyledTagName(parent.nodeName))
+		while (parent && node == parent.lastChild) { // now detects further nesting to fix focus mark span issues
+			if (isInlineFormattedElement(parent.nodeName))
 				this.marks = this.marks ? [...this.marks, parent] : [parent]
 			node = parent
 			parent = node.parentNode

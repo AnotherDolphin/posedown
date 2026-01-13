@@ -1,24 +1,24 @@
 # FocusMarks Feature - Current Status
 
-**Last Updated:** 2026-01-11
-**Session Focus:** Span mirroring, edge detection, and real-time transformation fixes
+**Last Updated:** 2026-01-12
+**Session Focus:** issue#34 fix (nested element prioritization) and code refactoring
 
 ---
 
 ## Executive Summary
 
-FocusMarks is **partially functional** with the core inline features working but significant issues remain around cursor positioning, edge detection reliability, and consistent behavior during span editing.
+FocusMarks is **partially functional** with the core inline features working but significant issues remain around cursor positioning and consistent behavior during span editing.
 
 **What's Working:**
 - ✅ Basic inline mark injection/ejection (bold, italic, code, etc.)
 - ✅ Span mirroring (editing opening span syncs to closing span)
 - ✅ Real-time unwrapping and transformation
 - ✅ Skip marks on newly typed formatted elements
-- ✅ Edge detection for cursor adjacent to formatted elements (new)
+- ✅ Edge detection for cursor adjacent to formatted elements
+- ✅ **NEW:** issue#34 - Activates focusMarks when cursor directly before/after formatted elements in adjacent nodes
 
 **What's Broken:**
 - ❌ Cursor positioning after span edits (jumps to wrong location)
-- ❌ Edge detection doesn't always work (inconsistent)
 - ❌ Backspace behavior at delimiter boundaries (sometimes removes both delimiters)
 - ❌ Focus marks don't consistently re-appear after transformations
 
@@ -97,7 +97,15 @@ Addresses issue: "focusMarks must show if editing spans causes re-render but car
 
 When deleting delimiters in nested formats (e.g., `__*word*__`), cursor often lands at P element level, not inside remaining formatted element.
 
-### 3. Removed `forceShowMarksOnElement` Flag (Attempted)
+### 3. Fixed issue#34: Adjacent Node Detection
+
+**What Changed:**
+`findFocusedInline()` now prioritizes formatted elements directly before/after cursor in adjacent nodes, even when cursor is inside a parent formatted element.
+
+**Why:**
+Improves precision - shows marks for the element closest to cursor position rather than always showing parent element marks.
+
+### 4. Removed `forceShowMarksOnElement` Flag (Attempted)
 
 **Attempted Solution:**
 - Added `forceShowMarksOnElement` property to FocusMarkManager

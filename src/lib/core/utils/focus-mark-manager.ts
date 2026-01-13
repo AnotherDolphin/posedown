@@ -3,7 +3,8 @@ import {
 	getMainParentBlock,
 	INLINE_FORMATTED_TAGS,
 	BLOCK_FORMATTED_TAGS,
-	getFirstOfAncestors
+	getFirstOfAncestors,
+	isInlineFormattedElement
 } from './dom'
 import { isBlockTagName } from './block-marks'
 import { findAndTransform } from '../transforms/transform'
@@ -108,12 +109,80 @@ export class FocusMarkManager {
 	}
 
 	/**
+	 * Check if cursor is at the edge of a text node adjacent to a formatted element.
+	 * @returns The adjacent formatted element if found, null otherwise
+	 */
+	private checkTextNodeEdges(textNode: Text, offset: number): HTMLElement | null {
+		// At start of text node - check previous sibling
+		if (offset === 0 && textNode.previousSibling?.nodeType === Node.ELEMENT_NODE) {
+			const el = textNode.previousSibling as HTMLElement
+			if (isInlineFormattedElement(el.tagName)) return el
+		}
+
+		// At end of text node - check next sibling
+		if (offset === textNode.textContent?.length && textNode.nextSibling?.nodeType === Node.ELEMENT_NODE) {
+			const el = textNode.nextSibling as HTMLElement
+			if (isInlineFormattedElement(el.tagName)) return el
+		}
+
+		return null
+	}
+
+	/**
 	 * Find the closest inline formatted parent element containing the cursor.
 	 * Only considers INLINE_FORMATTED_TAGS (strong, em, code, s, del).
+	 *
+	 * Also detects when cursor is at the edge of a formatted element (in adjacent text node).
 	 */
 	private findFocusedInline(selection: Selection, root: HTMLElement): HTMLElement | null {
 		if (!selection.anchorNode) return null
-		return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS) as HTMLElement | null
+
+		const anchorNode = selection.anchorNode
+		const offset = selection.anchorOffset
+
+		// Check if cursor is inside a formatted element
+		const insideFormatted = getFirstOfAncestors(
+			anchorNode,
+			root,
+			INLINE_FORMATTED_TAGS
+		) as HTMLElement | null
+
+		// If inside formatted element AND in text node, check if cursor at edge with sibling
+		// (issue#34 fix: prioritize sibling over parent)
+		if (insideFormatted && anchorNode.nodeType === Node.TEXT_NODE) {
+			const edgeSibling = this.checkTextNodeEdges(anchorNode as Text, offset)
+			if (edgeSibling) return edgeSibling
+		}
+
+		if (insideFormatted) return insideFormatted
+
+		// Not inside any formatted element - check for adjacent formatted elements
+
+		// Case A: Cursor in text node - check edge siblings
+		if (anchorNode.nodeType === Node.TEXT_NODE) {
+			const edgeSibling = this.checkTextNodeEdges(anchorNode as Text, offset)
+			if (edgeSibling) return edgeSibling
+		}
+
+		// Case B: Cursor in container element - check children by index
+		else if (anchorNode.nodeType === Node.ELEMENT_NODE) {
+			const containerEl = anchorNode as HTMLElement
+			const childNodes = containerEl.childNodes
+
+			// Cursor before a child
+			if (offset < childNodes.length && childNodes[offset].nodeType === Node.ELEMENT_NODE) {
+				const el = childNodes[offset] as HTMLElement
+				if (isInlineFormattedElement(el.tagName)) return el
+			}
+
+			// Cursor after a child
+			if (offset > 0 && offset <= childNodes.length && childNodes[offset - 1].nodeType === Node.ELEMENT_NODE) {
+				const el = childNodes[offset - 1] as HTMLElement
+				if (isInlineFormattedElement(el.tagName)) return el
+			}
+		}
+
+		return null
 	}
 
 	/**
