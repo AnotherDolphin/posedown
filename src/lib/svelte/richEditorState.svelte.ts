@@ -28,7 +28,12 @@ import {
 	endsWithValidDelimiter,
 	isEditorEmpty
 } from '../core/utils/dom'
-import { setCaretAtEnd, setCaretAfterExit, setCaretAfter, escapeCaretStyle } from '../core/utils/selection'
+import {
+	setCaretAtEnd,
+	setCaretAfterExit,
+	setCaretAfter,
+	escapeCaretStyle
+} from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
 import { FOCUS_MARK_CLASS, FocusMarkManager } from '../core/utils/focus-mark-manager'
 import { findAndTransform } from '$lib/core/transforms/transform'
@@ -45,7 +50,7 @@ export class RichEditorState {
 	lastSyncedAt = Date.now()
 	private syncTimer: ReturnType<typeof setTimeout> | null = null
 	marks: Array<Element | Node> | null = $state(null) // only a state for debugging with $inspect
-	private history = new EditorHistory({ debug: true })
+	private history = new EditorHistory({ debug: false })
 	private focusMarkManager = new FocusMarkManager()
 	private skipNextFocusMarks = false // Prevents marks from appearing right after transformations
 
@@ -191,21 +196,38 @@ export class RichEditorState {
 		// spain.contains is only true if selection lands within span and isConnected still true
 		// caret may land outside span if backspacing (*|*...) of it even if it is still present/isConnected
 
-		// FOCUS MARK SPAN EDIT HANDLING (can't use smartReplace bc we want to UPDATE/EJECT format/pattern AND keep caret in span)
+		// FOCUS MARK SPAN EDIT HANDLING (can't use smartReplace bc we want to EJECT formatted parent AND keep caret in span)
 
 		// neutralize inline (two sided) focus mark to refelct (live) edits
 
+		// Only enter focus mark edit flow if:
+		// 1. A span was modified (delimiter edited), OR
+		// 2. A span was disconnected (deleted), OR
+		// 3. Cursor is inside a focus mark span (editing delimiter)
+		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
+		const spanModified = this.focusMarkManager.spanRefs.some(
+			span => span.textContent !== this.focusMarkManager.activeDelimiter
+		)
+		const spanDisconnected = this.focusMarkManager.spanRefs.some(span => !span.isConnected)
+		const cursorInsideSpan = this.focusMarkManager.spanRefs.some(span =>
+			span.contains(selection.anchorNode)
+		)
+
 		if (
 			this.focusMarkManager.activeInline &&
-			(this.focusMarkManager.activeInline?.contains(selection.anchorNode) ||
-				this.focusMarkManager.spanRefs.some(
-					span => span.textContent !== this.focusMarkManager.activeDelimiter
-				) ||
-				this.focusMarkManager.spanRefs.some(span => !span.isConnected))
+			(spanModified || spanDisconnected || cursorInsideSpan)
 		) {
-			// must first mirror the span edits
+
+			console.log('asdf', {spanDisconnected, spanModified, cursorInsideSpan})
+			// issue: disconnected caret breaks the range api used below ❌
+			
 			// 1. if BOTH disconnected OR any span is empty; remove both
 			// Note: Only check if both disconnected to avoid removing spans during normal editing
+
+			// issue: doesn't trigger if one span was just deleted by backspace/delete ❌
+			// but if we check for any disconnected (which we MUST to disconnect the other),
+			// then backspacing once remove the whole span even if it has more chars
+			// and in that case 3 of spanDisconnected, spanModified, cursorInsideSpan are all true; how?
 			const bothDisconnected = this.focusMarkManager.spanRefs.every(span => !span.isConnected)
 			const anyEmpty = this.focusMarkManager.spanRefs.some(
 				span => !span.textContent || span.textContent.trim() === ''
@@ -213,11 +235,12 @@ export class RichEditorState {
 
 			if (bothDisconnected || anyEmpty) {
 				this.focusMarkManager.spanRefs.forEach(span => span.remove())
+				// to be handled in focusMarkManager with other side effects
 				this.focusMarkManager.activeDelimiter = ''
 				// this.focusMarkManager.spanRefs = []
 			}
 			// 2. if one is edited, mirror to the other
-			if (
+			else if (
 				this.focusMarkManager.spanRefs.length === 2 && // Ensure we have 2 spans before accessing index 1
 				this.focusMarkManager.spanRefs[0].textContent !==
 					this.focusMarkManager.spanRefs[1].textContent
@@ -230,6 +253,7 @@ export class RichEditorState {
 					span => span.textContent !== delimiter
 				)
 				const mirrorSpan = this.focusMarkManager.spanRefs.find(span => span !== editedSpan)
+				// todo: normaize both spans if invalid delimiters
 
 				if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
 					mirrorSpan.textContent = editedSpan.textContent
@@ -237,7 +261,9 @@ export class RichEditorState {
 				}
 			}
 
-			debugger
+			// the next code is only needed when spand edited and not removed?
+
+			// debugger
 
 			// 1. extract content within activeInline without the delimiters and deformat outer tag
 			const cleanClone = this.focusMarkManager.activeInline.cloneNode(true) as HTMLElement
@@ -250,16 +276,26 @@ export class RichEditorState {
 			const { fragment } = markdownToDomFragment(md)
 			// 1.4 replace the formatted element within activeInline with the fragment (leaving the delimiters, and hence caret, in the dom)
 			const range = document.createRange()
-			range.setStartAfter(this.focusMarkManager.spanRefs[0])
+			range.setStartAfter(this.focusMarkManager.spanRefs[0]) // issue: if disconnected throws unhandled error
 			range.setEndBefore(this.focusMarkManager.spanRefs[1])
 			range.deleteContents()
 			// issue21: caret style persists even though the formatted tag has been ejected
 			// for ex. ejected <strong> parent not in frag but returns on range.insertNode
-			range.insertNode(fragment)
+			// range.insertNode(fragment)
+
+			// proposal: instead of 
+			// range.deleteContents() 
+			// range.insertNode(fragment)
+			// use smartReplaceChildren and set the correct parameters
+			// > smartReplace will still remove the entirety of the parent tag, 
+			// > but attempts to restore cursor to its repalcement children
+			// > However, the function is expecting pattern object, but we don't want to match a new pattern
+			// > we need to adjust the function to be flexible in that regard if needed
+			
 
 			// Escape caret style to prevent formatting carryover
 			// if (lastNode && selection) {
-				// await escapeCaretStyle(this.focusMarkManager.activeInline, selection, this.editableRef)
+			// await escapeCaretStyle(this.focusMarkManager.activeInline, selection, this.editableRef)
 			// }
 
 			// 2. remove activeInline from DOM
@@ -483,14 +519,15 @@ export class RichEditorState {
 		if (this.marks !== null) this.marks = null // clear on displacement
 
 		let node = selection.anchorNode
-		
+
 		if (node.nodeType !== Node.TEXT_NODE || selection.anchorOffset !== node.textContent?.length) {
 			return
 		}
 
 		// Find and mark the outermost parent ending at caret (to be exited on keydown)
 		let parent = node.parentNode
-		while (parent && node == parent.lastChild) { // now detects further nesting to fix focus mark span issues
+		while (parent && node == parent.lastChild) {
+			// now detects further nesting to fix focus mark span issues
 			if (isInlineFormattedElement(parent.nodeName))
 				this.marks = this.marks ? [...this.marks, parent] : [parent]
 			node = parent

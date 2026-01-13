@@ -75,7 +75,7 @@ export class FocusMarkManager {
 		// 1. Find which inline/block elements contain the cursor
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
-		console.log(selection.anchorNode, focusedInline)
+		// console.log(selection.anchorNode, focusedInline)
 
 		// 2. Handle inline transition (if focused element changed)
 		if (this.activeInline !== focusedInline) {
