@@ -342,6 +342,60 @@ And `calculateCursorOffset`/`restoreCursor` only exist in FocusMarkManager's unu
 - Keeps reference implementation of cursor restoration logic available
 - Plan: Consolidate back to FocusMarkManager once behavior is stable
 
+### 5. Caret Style Persistence - Architectural Problem (2026-01-13)
+
+**Discovery:** Focus mark spans exist INSIDE the formatted element being transformed.
+
+**DOM Structure:**
+```html
+<strong>
+  <span class="pd-focus-mark">**</span>
+  content
+  <span class="pd-focus-mark">**</span>
+</strong>
+```
+
+**Problem:** When using `range.insertNode(fragment)` between spans (richEditorState.svelte.ts:251-253):
+- We're inserting INSIDE the `<strong>` element
+- Browser maintains that formatting context
+- The `<strong>` wrapper never gets removed from the DOM
+- Comment on line 256-257 confirms: "ejected <strong> parent not in frag but returns on range.insertNode"
+
+**The Catch-22:**
+1. **Must remove wrapper**: To escape the formatting context (remove `<strong>` tag)
+2. **Must preserve spans**: To keep caret position in the DOM
+3. **These conflict**: Removing the wrapper removes the spans that are inside it
+
+**Attempted Solutions:**
+
+1. ❌ **`replaceWith(fragment)`** - Removes entire `<strong>` including spans → loses caret
+2. ❌ **Unwrap with `insertBefore` loop** - Moving nodes might cause browser to lose Selection reference
+3. ❌ **Current approach** - Insert between spans keeps us inside formatting context
+4. ⏳ **`replaceWith(...childNodes)`** - Untested, might preserve node positions better
+
+**Root Cause:**
+The original design assumed we could insert content between the spans and the browser would honor the new formatting. However, because the spans are CHILDREN of the formatted element, any insertion between them is still within that element's scope.
+
+**Constraint:**
+From design: "can't use smartReplace bc we want to UPDATE/EJECT format/pattern AND keep caret in span" (richEditorState.svelte.ts:194). The manual handling was specifically added to preserve caret position during delimiter edits.
+
+**Impact:**
+- When editing `**bold**` → `*italic*`, the `<strong>` tag persists
+- Caret style persistence workaround (`escapeCaretStyle`) prevents new text from being bold
+- But HTML structure still wrong: `<strong><em>italic</em></strong>` instead of `<em>italic</em>`
+- Tests fail because DOM structure doesn't match expected markdown semantics
+
+**Status:** Needs architectural solution to:
+- Escape the formatting context (remove wrapper element)
+- Preserve focus mark spans in the DOM (keep caret anchors)
+- Maintain Selection/Range validity through the transformation
+
+**Possible Directions:**
+1. Store Selection offset/node references, unwrap, restore Selection manually
+2. Use `document.createTreeWalker` to find equivalent position after unwrap
+3. Redesign: Place focus mark spans OUTSIDE the formatted element as siblings
+4. Accept the limitation: Transform correctly but don't preserve exact caret in spans
+
 ---
 
 ## Recommendations
