@@ -137,11 +137,11 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 		}
 		await page.waitForTimeout(50);
 
-		// 3. Should show _ marks for <em>, not ** marks for <strong>
+		// 3. Should show * marks for <em> (normalized), not ** marks for <strong>
 		const focusMarks = editor.locator('.pd-focus-mark');
 		await expect(focusMarks).toHaveCount(2);
-		await expect(focusMarks.first()).toContainText('_');
-		await expect(focusMarks.last()).toContainText('_');
+		await expect(focusMarks.first()).toContainText('*');
+		await expect(focusMarks.last()).toContainText('*');
 	});
 
 	// ============== BASIC ACTIVATION TESTS ==============
@@ -233,7 +233,7 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 		await expect(focusMarks.first()).toContainText('`');
 	});
 
-	test('should show marks with correct delimiter syntax (_ vs * for italic)', async ({ page }) => {
+	test('should normalize delimiter syntax (underscore italic becomes asterisk)', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
 		// 1. Create italic with underscore
@@ -247,13 +247,13 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 		await em.click();
 		await page.waitForTimeout(50);
 
-		// 3. Should show _ not *
+		// 3. Should normalize to * (not preserve original _)
 		const focusMarks = editor.locator('.pd-focus-mark');
-		await expect(focusMarks.first()).toContainText('_');
-		await expect(focusMarks.last()).toContainText('_');
+		await expect(focusMarks.first()).toContainText('*');
+		await expect(focusMarks.last()).toContainText('*');
 	});
 
-	test('should show marks with correct delimiter syntax (__ vs ** for bold)', async ({ page }) => {
+	test('should normalize delimiter syntax (underscore bold becomes asterisk)', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
 		// 1. Create bold with underscore
@@ -267,10 +267,10 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 		await strong.click();
 		await page.waitForTimeout(50);
 
-		// 3. Should show __ not **
+		// 3. Should normalize to ** (not preserve original __)
 		const focusMarks = editor.locator('.pd-focus-mark');
-		await expect(focusMarks.first()).toContainText('__');
-		await expect(focusMarks.last()).toContainText('__');
+		await expect(focusMarks.first()).toContainText('**');
+		await expect(focusMarks.last()).toContainText('**');
 	});
 
 	test('should transition marks when navigating between nested elements', async ({ page }) => {

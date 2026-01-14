@@ -145,13 +145,13 @@ Result: <em>text</em> (no marks shown until user navigates back)
    - ❌ Cursor can accidentally land inside hidden spans
 
 2. **Data attributes** - Store delimiters in `data-pd-mark="**,**"`
-   - ❌ Cannot preserve original syntax (`**` vs `__`)
-   - ❌ Both become `<strong>` after parsing, losing delimiter info
+   - ❌ Adds complexity to track and maintain attributes
    - ❌ Requires modifying transformation pipeline
+   - ❌ Unnecessary since we normalize to default delimiters anyway
 
 3. **Dynamic injection** ✅
    - ✅ Clean DOM 99% of time (max 4 spans: 1 inline pair + 1 block pair)
-   - ✅ Preserves original syntax via reverse-engineering
+   - ✅ Derives delimiters via reverse-engineering (htmlToMarkdown)
    - ✅ No transformation pipeline changes
    - ✅ Acceptable performance (~0.1-0.5ms per selection change)
 
@@ -170,10 +170,18 @@ return { start: parts[0], end: parts[1] }
 ```
 
 **Why this works:**
-- ✅ Preserves original syntax (`**` vs `__`, `*` vs `_`)
+- ✅ Normalizes to default syntax (`**` for bold, `*` for italic, etc.)
 - ✅ Works for both inline (opening + closing) and block (prefix only)
 - ✅ Simple implementation (no regex, no complex parsing)
 - ✅ Leverages existing `htmlToMarkdown()` infrastructure
+
+**Important Design Decision: Delimiter Normalization**
+The system intentionally normalizes all delimiters to their default markdown syntax:
+- `<strong>` → `**` (not `__`)
+- `<em>` → `*` (not `_`)
+- `<ul><li>` → `-` (not `*`)
+
+This is by design for consistency and simplicity. The user's original delimiter choice is not preserved after HTML parsing because `<strong>` elements created from `**bold**` and `__bold__` are identical in the DOM. Rather than tracking original syntax in data attributes, we normalize to standard defaults.
 
 **Edge cases handled:**
 - Text contains delimiter characters: `split()` correctly handles this

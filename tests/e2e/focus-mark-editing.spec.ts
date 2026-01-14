@@ -503,32 +503,32 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		expect(text).toContain('test');
 	});
 
-	test('should handle mirroring with underscore delimiter variants', async ({ page }) => {
+	test('should normalize underscore delimiters and handle mirroring', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
-		// 1. Create bold text using __
+		// 1. Create bold text using __ (will be normalized to **)
 		await editor.pressSequentially('__bold__');
 		await page.waitForTimeout(100);
 
 		const strong = editor.locator('strong');
 		await expect(strong).toBeVisible();
 
-		// 2. Click and verify marks show __
+		// 2. Click and verify marks show ** (normalized from __)
 		await strong.click();
 		await page.waitForTimeout(50);
 
 		const focusMarks = editor.locator('.pd-focus-mark');
-		await expect(focusMarks.first()).toContainText('__');
-		await expect(focusMarks.last()).toContainText('__');
+		await expect(focusMarks.first()).toContainText('**');
+		await expect(focusMarks.last()).toContainText('**');
 
-		// 3. Navigate into opening mark and delete one underscore
+		// 3. Navigate into opening mark and delete one asterisk
 		await page.keyboard.press('Home');
 		await page.keyboard.press('ArrowRight');
 		await page.keyboard.press('ArrowRight');
 		await page.keyboard.press('Backspace');
 		await page.waitForTimeout(100);
 
-		// 4. Both should mirror to '_', unwrap and transform to italic
+		// 4. Both should mirror to '*', unwrap and transform to italic
 		await expect(strong).not.toBeVisible();
 		const em = editor.locator('em');
 		await expect(em).toBeVisible();
