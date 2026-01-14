@@ -27,6 +27,7 @@ export class FocusMarkManager {
 	activeInline: HTMLElement | null = null
 	activeBlock: HTMLElement | null = null
 	activeDelimiter: string | null = null
+	inlineSpanRefs: Array<HTMLElement> = []
 	private editableRef: HTMLElement | null = null
 
 	constructor() {
@@ -46,10 +47,9 @@ export class FocusMarkManager {
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
 	update(selection: Selection, root: HTMLElement): void {
-		
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
-		
+
 		// 1. Find which inline/block elements contain the cursor
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
@@ -98,7 +98,10 @@ export class FocusMarkManager {
 		}
 
 		// At end of text node - check next sibling
-		if (offset === textNode.textContent?.length && textNode.nextSibling?.nodeType === Node.ELEMENT_NODE) {
+		if (
+			offset === textNode.textContent?.length &&
+			textNode.nextSibling?.nodeType === Node.ELEMENT_NODE
+		) {
 			const el = textNode.nextSibling as HTMLElement
 			if (isInlineFormattedElement(el.tagName)) return el
 		}
@@ -154,7 +157,11 @@ export class FocusMarkManager {
 			}
 
 			// Cursor after a child
-			if (offset > 0 && offset <= childNodes.length && childNodes[offset - 1].nodeType === Node.ELEMENT_NODE) {
+			if (
+				offset > 0 &&
+				offset <= childNodes.length &&
+				childNodes[offset - 1].nodeType === Node.ELEMENT_NODE
+			) {
 				const el = childNodes[offset - 1] as HTMLElement
 				if (isInlineFormattedElement(el.tagName)) return el
 			}
@@ -169,7 +176,11 @@ export class FocusMarkManager {
 	 */
 	private findFocusedBlock(selection: Selection, root: HTMLElement): HTMLElement | null {
 		if (!selection.anchorNode) return null
-		return getFirstOfAncestors(selection.anchorNode, root, BLOCK_FORMATTED_TAGS) as HTMLElement | null
+		return getFirstOfAncestors(
+			selection.anchorNode,
+			root,
+			BLOCK_FORMATTED_TAGS
+		) as HTMLElement | null
 	}
 
 	/**
@@ -189,6 +200,12 @@ export class FocusMarkManager {
 		// Create mark spans
 		const startSpan = this.createMarkSpan(delimiters.start)
 		const endSpan = this.createMarkSpan(delimiters.end)
+
+		// store refs in weakmap (auto garbage collected) // this appraoch failed because weakMap doesn't reflect immediately and await GC
+		// this.spanMeta.set(startSpan, delimiters.start)
+		// this.spanMeta.set(endSpan, delimiters.end)
+		// store refs in array for easy access
+		this.inlineSpanRefs = [startSpan, endSpan]
 
 		// Inject at element boundaries
 		element.prepend(startSpan)
@@ -213,6 +230,8 @@ export class FocusMarkManager {
 		// Create prefix span
 		const prefixSpan = this.createMarkSpan(delimiters.start)
 
+		// todo: refs state for block spans?
+
 		// Inject at start of block
 		element.prepend(prefixSpan)
 	}
@@ -227,6 +246,9 @@ export class FocusMarkManager {
 		// Remove all mark spans
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
 		marks.forEach(mark => mark.remove())
+		this.inlineSpanRefs = []
+		// this.blockSpanRefs = []
+		// WeakMap entries auto-cleaned when spans garbage collected
 
 		// Merge fragmented text nodes back together
 		element.normalize()

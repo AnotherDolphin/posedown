@@ -192,128 +192,67 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return false
 
-		// span isConnected is false if content deleted/removed
-		// spain.contains is only true if selection lands within span and isConnected still true
-		// caret may land outside span if backspacing (*|*...) of it even if it is still present/isConnected
-
-		// FOCUS MARK SPAN EDIT HANDLING (can't use smartReplace bc we want to EJECT formatted parent AND keep caret in span)
-
 		// neutralize inline (two sided) focus mark to refelct (live) edits
 
 		// Only enter focus mark edit flow if:
 		// 1. A span was modified (delimiter edited), OR
 		// 2. A span was disconnected (deleted), OR
-		// 3. Cursor is inside a focus mark span (editing delimiter)
 		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
-		const spans = this.focusMarkManager.activeInline
-			? Array.from(
-					this.focusMarkManager.activeInline.querySelectorAll('.' + FOCUS_MARK_CLASS)
-			  ) as HTMLElement[]
-			: []
+
+		// Query all focus mark spans in the editor and get the formatted element from span parent
+		const spans = this.focusMarkManager.inlineSpanRefs
+
+		const spanDisconnected = spans.some(span => !span.isConnected)
 		const spanModified = spans.some(
 			span => span.textContent !== this.focusMarkManager.activeDelimiter
 		)
-		const spanDisconnected = spans.some(span => !span.isConnected)
-		const cursorInsideSpan = spans.some(span => span.contains(selection.anchorNode))
 
-		if (
-			this.focusMarkManager.activeInline &&
-			(spanModified || spanDisconnected || cursorInsideSpan)
-		) {
-			this.skipNextFocusMarks = true // prevent re-adding marks during this operation
-			console.log('asdf', { spanDisconnected, spanModified, cursorInsideSpan })
-			// issue: disconnected caret breaks the range api used below ❌
+		debugger
 
-			// 1. if BOTH disconnected OR any span is empty; remove both
-			// Note: Only check if both disconnected to avoid removing spans during normal editing
-
-			// issue: doesn't trigger if one span was just deleted by backspace/delete ❌
-			// but if we check for any disconnected (which we MUST to disconnect the other),
-			// then backspacing once remove the whole span even if it has more chars
-			// and in that case 3 of spanDisconnected, spanModified, cursorInsideSpan are all true; how?
-			// issueZ: spanRefs are outdated causing false negatives and spannon-removal ❌
-			debugger
-			const bothDisconnected = spans.some(span => !span.isConnected)
-			const anyEmpty = spans.some(
-				span => !span.textContent || span.textContent.trim() === ''
+		if (spanDisconnected) {
+			spans.forEach(span => span.remove())
+			// to be handled in focusMarkManager with other side effects
+			this.focusMarkManager.activeDelimiter = ''
+		}
+		// 2. if one is edited, mirror to the other
+		else if (spanModified) {
+			const editedSpan = spans.find(
+				span => span.textContent !== this.focusMarkManager.activeDelimiter
 			)
+			const mirrorSpan = spans.find(span => span !== editedSpan)
+			// todo: normaize both spans if invalid delimiters => update: use onBeforeInput to prevent invalid delimiters
 
-			if (bothDisconnected || anyEmpty) {
-				spans.forEach(span => span.remove())
-				// to be handled in focusMarkManager with other side effects
-				this.focusMarkManager.activeDelimiter = ''
+			if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
+				mirrorSpan.textContent = editedSpan.textContent
+				this.focusMarkManager.activeDelimiter = editedSpan.textContent || ''
 			}
-			// 2. if one is edited, mirror to the other
-			else if (spans.length === 2 && spans[0].textContent !== spans[1].textContent) {
-				// determine which span was edited (based on selection position)
-				// if selection is at start of activeInline or right before, left span was edited
-				// else right span was edited
-				const delimiter = this.focusMarkManager.activeDelimiter
-				const editedSpan = spans.find(span => span.textContent !== delimiter)
-				const mirrorSpan = spans.find(span => span !== editedSpan)
-				// todo: normaize both spans if invalid delimiters
+		}
+		// else {
+		// 	return // no changes to spans detected, but this should still trigger the NORMAL FLOW below?
+		// }
 
-				if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
-					mirrorSpan.textContent = editedSpan.textContent
-					this.focusMarkManager.activeDelimiter = editedSpan.textContent || delimiter
-				}
-			}
+		// the next code is only needed when spand edited and not removed?
+		const formattedElement = this.focusMarkManager.activeInline
+		if (formattedElement && (spanModified || spanDisconnected)) {
+			debugger
 
-			// the next code is only needed when spand edited and not removed?
-
-			// debugger
-
-			// 1. extract content within activeInline without the delimiters and deformat outer tag
-			const cleanClone = this.focusMarkManager.activeInline.cloneNode(true) as HTMLElement
-			// 1.1 remove delimiters
-			// cleanClone.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
+			// 1. unwrap content within formattedElement (de-transform)
+			const cleanClone = formattedElement.cloneNode(true) as HTMLElement
 			cleanClone.normalize() // Merge fragmented text nodes
-			// 1.2 convert insides to md to preserve nested formatting
+			// 1.2 convert insides to md to preserve nested tags unrelated to current focus mark
 			const md = htmlToMarkdown(cleanClone.innerHTML)
 			const { fragment } = markdownToDomFragment(md)
-			// 1.4 replace the formatted element within activeInline with the fragment (leaving the delimiters, and hence caret, in the dom)
-			// const range = document.createRange()
-			// range.setStartAfter(this.focusMarkManager.spanRefs[0]) // issue: if disconnected throws unhandled error
-			// range.setEndBefore(this.focusMarkManager.spanRefs[1])
-			// range.deleteContents()
-			// issue21: caret style persists even though the formatted tag has been ejected
-			// for ex. ejected <strong> parent not in frag but returns on range.insertNode
-			// range.insertNode(fragment)
+			// 1.4 replace the formatted element with the fragment (leaving the delimiters, and hence caret, in the dom)
 
-			// proposal: instead of
-			// range.deleteContents()
-			// range.insertNode(fragment)
-			// use smartReplaceChildren and set the correct parameters
-			// > smartReplace will still remove the entirety of the parent tag,
-			// > but attempts to restore cursor to its repalcement children
-			// > However, the function is expecting pattern object, but we don't want to match a new pattern
-			// > we need to adjust the function to be flexible in that regard if needed
-
-			// Escape caret style to prevent formatting carryover
-			// if (lastNode && selection) {
-			// await escapeCaretStyle(this.focusMarkManager.activeInline, selection, this.editableRef)
-			// }
-
-			// Inject current focus mark clones so cursor can restore into them
-			if (spans.length === 2) {
-				fragment.prepend(spans[0].cloneNode(true))
-				fragment.append(spans[1].cloneNode(true))
-			}
-
-			// Build full block fragment with activeInline replaced
-			// debugger
-			const parentBlock = this.focusMarkManager.activeInline.parentElement!
-			const blockFragment = document.createDocumentFragment()
-			Array.from(parentBlock.childNodes).forEach(child => {
-				if (child === this.focusMarkManager.activeInline) {
-					blockFragment.append(...fragment.childNodes)
-				} else {
-					blockFragment.append(child.cloneNode(true))
-				}
+			// Build full block fragment with formattedElement replaced
+			const parentBlock = formattedElement.parentElement!
+			const newBlockFragment = document.createDocumentFragment()
+			parentBlock.childNodes.forEach(child => {
+				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
+				else newBlockFragment.append(child.cloneNode(true))
 			})
-			smartReplaceChildren(parentBlock, blockFragment, selection)
+			smartReplaceChildren(parentBlock, newBlockFragment, selection)
 			this.history.push(this.editableRef)
-			// update focusManager states so it can unfocus etc.!!!!!!!! maybe use .update to recognize the newly injected marks
 
 			return
 		}
