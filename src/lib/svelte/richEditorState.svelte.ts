@@ -207,8 +207,6 @@ export class RichEditorState {
 			span => span.textContent !== this.focusMarkManager.activeDelimiter
 		)
 
-		debugger
-
 		if (spanDisconnected) {
 			spans.forEach(span => span.remove())
 			// to be handled in focusMarkManager with other side effects
@@ -234,7 +232,6 @@ export class RichEditorState {
 		// the next code is only needed when spand edited and not removed?
 		const formattedElement = this.focusMarkManager.activeInline
 		if (formattedElement && (spanModified || spanDisconnected)) {
-			debugger
 
 			// 1. unwrap content within formattedElement (de-transform)
 			const cleanClone = formattedElement.cloneNode(true) as HTMLElement
@@ -251,7 +248,10 @@ export class RichEditorState {
 				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
 				else newBlockFragment.append(child.cloneNode(true))
 			})
-			smartReplaceChildren(parentBlock, newBlockFragment, selection)
+
+			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
+
+			smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
 			this.history.push(this.editableRef)
 
 			return

@@ -485,7 +485,36 @@ const getFirstTextNode = (node: Node): Text | null => {
 	return null
 }
 
-// Helper to compare and swap nodes while tracking the cursor's logical target
+
+/**
+ * Reconcile and replace a parent's child nodes from a new fragment while
+ * attempting to preserve the user's caret position logically.
+ *
+ * The function compares `parent`'s current children to the children in
+ * `newFragment` and:
+ *  - removes extra old nodes,
+ *  - appends extra new nodes,
+ *  - replaces nodes that differ,
+ *  - preserves identical nodes (so references/event listeners stay intact),
+ *  - and attempts to restore the Selection to the equivalent text offset
+ *    in the newly inserted content.
+ *
+ * If `patternMatch` is provided, the caret offset will be adjusted to ignore
+ * delimiter characters (useful when converting markdown delimiters into
+ * formatting nodes).
+ *
+ * @param parent - Block-level element whose children will be reconciled and updated.
+ * @param newFragment - DocumentFragment or Node providing new child nodes
+ * @param selection - Current Selection used to restore caret position
+ * @param patternMatch - Optional `{ start, end, delimiterLength }` describing a
+ *                       matched pattern in the block so caret offsets can be adjusted;
+ * @returns void
+ *
+ * @remarks
+ * - This function mutates the DOM and may move/remove nodes and change the selection.
+ * - If the selection's anchor is not a descendant of `parent`, caret restoration is skipped.
+ * - If precise caret restoration fails, it falls back to placing the caret at the end.
+ */
 export const smartReplaceChildren = (
 	parent: HTMLElement,
 	newFragment: DocumentFragment | Node,
