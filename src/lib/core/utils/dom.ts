@@ -683,6 +683,7 @@ export function calculateCleanCursorOffset(element: HTMLElement, selection: Sele
 
 
 /** gemini
+ * @deprecated
  * Creates a DOM Range based on global offsets within a block element.
  * This decouples pattern detection (string-based) from DOM structure (node-based).
  */

@@ -15,6 +15,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await page.waitForTimeout(50); // a small buffer
 	});
 
+	// REVIEWED TEST fault#1 (fails but should pass)
 	test('should change bold to italic by editing opening delimiter', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -47,9 +48,10 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(strong).not.toBeVisible();
 		const em = editor.locator('em');
 		await expect(em).toBeVisible();
-		await expect(em).toContainText('bold');
+		await expect(em).toContainText('bold'); // fault: wrong, bold is ejected and unwrapped. It should be a negative.
 	});
 
+	// REVIEWED TEST
 	test('should handle typing non-delimiter chars inside focus mark span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -80,6 +82,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(em).toContainText('abc');
 	});
 
+	// REVIEWED TEST
 	test('should unwrap completely when deleting all delimiters', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -107,6 +110,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(editor.locator('p')).toContainText('code');
 	});
 
+	// REVIEWED TEST ❌ Issue#9: spans don't unwrap as simple text when delimiters become invalid
 	test('should keep mismatched delimiters as plain text', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -137,6 +141,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		expect(text).toBe('***text***');
 	});
 
+	// REVIEWED TEST
 	test('should preserve cursor position during unwrap', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -170,6 +175,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(em).toBeVisible();
 	});
 
+	// REVIEWED TEST
 	test('should handle strikethrough delimiter editing', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -201,6 +207,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(editor.locator('p')).toContainText('strike');
 	});
 
+	// REVIEWED TEST fault#2 (passed but should fail) ❌ Issue#10: incorrect content inside transformed span
 	test('should handle complex edit: change ** to *a* creating italic with different content', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -231,11 +238,12 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(strong).not.toBeVisible();
 		const em = editor.locator('em');
 		await expect(em).toBeVisible();
-		await expect(em).toContainText('a');
+		await expect(em).toContainText('a'); // fault: must check that b is outside the em
 	});
 
 	// ============== SPAN MIRRORING TESTS ==============
 
+	// REVIEWED TEST - redundant with above?
 	test('should mirror opening span edit to closing span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -269,6 +277,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(editor.locator('p')).toContainText('*text*');
 	});
 
+	// REVIEWED TEST fault#3 ❌ - issue#7: typing delimiters (like * => **) doesn't update format
 	test('should mirror closing span edit to opening span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -296,8 +305,10 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		// 4. After mirroring, both spans should be '**', then unwrap
 		await expect(em).not.toBeVisible();
 		await expect(editor.locator('p')).toContainText('**text**');
+		// fault: must also confirm that the text is now bold
 	});
 
+	// REVIEWED TEST - redundant with above?
 	test('should mirror opening span to closing for bold → italic transformation', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -331,6 +342,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(em).toContainText('bold');
 	});
 
+	// REVIEWED TEST - redundant or even identical to the test with issue#7?
 	test('should mirror closing span to opening for italic → bold transformation', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -386,6 +398,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		expect(text).toBe('code');
 	});
 
+	// REVIEWED TEST - ❌ issue#3: deleting from the end doesn't restore caret properly (so the second backspace fails)
 	test('should mirror deletion of closing span to opening span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -411,6 +424,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		expect(text).toBe('strike');
 	});
 
+	// REVIEWED TEST ❌ issue#11: selecting multiple delimiters and typing doesn't mirror
 	test('should mirror complex text replacement in opening span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -439,6 +453,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		expect(unwrappedText).toBe('___text___');
 	});
 
+	// REVIEWED TEST ❌ issue#11: selecting multiple delimiters and typing doesn't mirror
 	test('should mirror complex text replacement in closing span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -472,6 +487,7 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		await expect(del).toContainText('text');
 	});
 
+	// REVIEWED TEST - fault#4
 	test('should handle mirroring when typing character by character in opening span', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -496,13 +512,14 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 
 		// After typing, delimiter becomes '**x', mirrors to closing
 		// Unwraps to **x + test + **x, pattern sees **x (not valid, stays plain)
-		await expect(strong).not.toBeVisible();
+		await expect(strong).not.toBeVisible(); // fault: system doesn't allow non delimiter chars in spans, so strong remains
 		const text = await editor.locator('p').textContent();
 		// The span had '**', user typed 'x', mirrored to closing
 		// Result: **xtest**x
 		expect(text).toContain('test');
 	});
 
+	// REVIEWED TEST
 	test('should normalize underscore delimiters and handle mirroring', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
@@ -717,5 +734,217 @@ test.describe('Rich Editor - Focus Mark Editing', () => {
 		const finalHTML = await editor.innerHTML();
 		const strongCount = (finalHTML.match(/<strong>/g) || []).length;
 		expect(strongCount).toBe(0);
+	});
+
+	// ============== CARET BOUNDARY POSITION TESTS ==============
+	// Issue: When caret is at boundaries of focus mark spans (before/after them),
+	// typing delimiters may go outside the formatted element, causing unexpected behavior
+
+	test('should handle typing delimiter BEFORE opening span (Home position)', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**');
+		await page.waitForTimeout(100);
+
+		const strong = editor.locator('strong');
+		await expect(strong).toBeVisible();
+
+		// 2. Click to show focus marks
+		await strong.click();
+		await page.waitForTimeout(50);
+
+		const focusMarks = editor.locator('.pd-focus-mark');
+		await expect(focusMarks).toHaveCount(2);
+
+		// 3. Navigate to Home (before opening span)
+		await page.keyboard.press('Home');
+
+		// 4. Type a delimiter character
+		await page.keyboard.type('*');
+		await page.waitForTimeout(100);
+
+		// Expected: The typed '*' should be captured/handled properly
+		// Bug behavior: '*' goes outside <strong>, caret jumps to end of block
+
+		// Verify caret didn't jump unexpectedly - type another char to check position
+		await page.keyboard.type('X');
+		await page.waitForTimeout(50);
+
+		const finalText = await editor.locator('p').textContent();
+		// 'X' should appear right after the '*' we typed, not at end of block
+		expect(finalText).toMatch(/\*X.*bold/);
+	});
+
+	test('should handle typing delimiter AFTER closing span (End position)', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**');
+		await page.waitForTimeout(100);
+
+		const strong = editor.locator('strong');
+		await expect(strong).toBeVisible();
+
+		// 2. Click to show focus marks
+		await strong.click();
+		await page.waitForTimeout(50);
+
+		const focusMarks = editor.locator('.pd-focus-mark');
+		await expect(focusMarks).toHaveCount(2);
+
+		// 3. Navigate to End (after closing span)
+		await page.keyboard.press('End');
+
+		// 4. Type a delimiter character
+		await page.keyboard.type('*');
+		await page.waitForTimeout(100);
+
+		// Verify caret position by typing another char
+		await page.keyboard.type('X');
+		await page.waitForTimeout(50);
+
+		const finalText = await editor.locator('p').textContent();
+		// 'X' should appear right after the '*' we typed at end
+		expect(finalText).toMatch(/bold.*\*X$/);
+	});
+
+	test('should handle typing delimiter between opening span and text', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**');
+		await page.waitForTimeout(100);
+
+		const strong = editor.locator('strong');
+		await expect(strong).toBeVisible();
+
+		// 2. Click to show focus marks
+		await strong.click();
+		await page.waitForTimeout(50);
+
+		// 3. Navigate: Home → past opening span (into content area before text)
+		await page.keyboard.press('Home');
+		await page.keyboard.press('ArrowRight'); // into span
+		await page.keyboard.press('ArrowRight'); // past first *
+		await page.keyboard.press('ArrowRight'); // past second *, now between span and text
+
+		// 4. Type a delimiter character - this is INSIDE the formatted element
+		await page.keyboard.type('*');
+		await page.waitForTimeout(100);
+
+		// This should trigger span modification detection or be handled as content
+		// Type marker to verify caret position
+		await page.keyboard.type('X');
+		await page.waitForTimeout(50);
+
+		const finalText = await editor.locator('p').textContent();
+		// '*X' should appear right before 'bold'
+		expect(finalText).toContain('*X');
+		expect(finalText).toContain('bold');
+	});
+
+	test('should handle typing delimiter between text and closing span', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**');
+		await page.waitForTimeout(100);
+
+		const strong = editor.locator('strong');
+		await expect(strong).toBeVisible();
+
+		// 2. Click to show focus marks
+		await strong.click();
+		await page.waitForTimeout(50);
+
+		// 3. Navigate: End → before closing span (between text and span)
+		await page.keyboard.press('End');
+		await page.keyboard.press('ArrowLeft'); // into closing span
+		await page.keyboard.press('ArrowLeft'); // past second *
+		await page.keyboard.press('ArrowLeft'); // past first *, now between text and span
+
+		// 4. Type a delimiter character
+		await page.keyboard.type('*');
+		await page.waitForTimeout(100);
+
+		// Type marker to verify caret position
+		await page.keyboard.type('X');
+		await page.waitForTimeout(50);
+
+		const finalText = await editor.locator('p').textContent();
+		// '*X' should appear right after 'bold'
+		expect(finalText).toContain('bold');
+		expect(finalText).toContain('*X');
+	});
+
+	test('should maintain caret position when typing multiple delimiters at Home', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create italic text
+		await editor.pressSequentially('*italic*');
+		await page.waitForTimeout(100);
+
+		const em = editor.locator('em');
+		await expect(em).toBeVisible();
+
+		// 2. Click to show focus marks
+		await em.click();
+		await page.waitForTimeout(50);
+
+		// 3. Navigate to Home
+		await page.keyboard.press('Home');
+
+		// 4. Type '**' to try changing format
+		await page.keyboard.type('**');
+		await page.waitForTimeout(100);
+
+		// 5. Verify caret didn't jump - type marker
+		await page.keyboard.type('X');
+		await page.waitForTimeout(50);
+
+		const finalText = await editor.locator('p').textContent();
+		// If caret jumped to end, 'X' would be at the end
+		// If caret stayed in place, 'X' should be near the beginning after '**'
+		expect(finalText).toMatch(/^\*\*X/);
+	});
+
+	test('should not jump caret to end of block when typing before focus marks', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create text with bold in the middle: "hello **bold** world"
+		await editor.pressSequentially('hello **bold** world');
+		await page.waitForTimeout(100);
+
+		const strong = editor.locator('strong');
+		await expect(strong).toBeVisible();
+
+		// 2. Click on bold to show focus marks
+		await strong.click();
+		await page.waitForTimeout(50);
+
+		const focusMarks = editor.locator('.pd-focus-mark');
+		await expect(focusMarks).toHaveCount(2);
+
+		// 3. Navigate to just before the bold element
+		// Home goes to start of block, then arrow right to "hello |**bold**"
+		await page.keyboard.press('Home');
+		for (let i = 0; i < 6; i++) {
+			await page.keyboard.press('ArrowRight'); // past "hello "
+		}
+
+		// 4. Type delimiter
+		await page.keyboard.type('*');
+		await page.waitForTimeout(100);
+
+		// 5. Type marker to check caret position
+		await page.keyboard.type('X');
+		await page.waitForTimeout(50);
+
+		const finalText = await editor.locator('p').textContent();
+		// '*X' should appear between "hello " and "bold", NOT at end after "world"
+		expect(finalText).toMatch(/hello.*\*X.*bold.*world/);
+		// Specifically should NOT be: "hello bold world*X"
+		expect(finalText).not.toMatch(/world\*X$/);
 	});
 });
