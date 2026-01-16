@@ -6,7 +6,8 @@
 - caret before marks and del delete all of them
 - issue#3: deleting from the end doesn't restore caret properly
 - issue#3.2: causing consecutive input/backspace to apply somewhere else
-- issue#10: adding same delimiters in the middle doesn't break and match the first half
+- **MAJOR** issue#10: adding same delimiters in the middle doesn't break and match the first half
+  > also, typing a rogue delimiter like "**bold`*|` and *italic***" causes unexpected commonmark spec [behavior](./commonmark-breaking-spec.md) 
 - issue#11: deleting into a non-pattern (~~ => ~) doesn't mirror 1 nor 2 backspaces
   > onInput system needs normal overall pattern checks even if nothing in the activeInline prompts update
 - Issue#9: spans don't unwrap as simple text when delimiters become invalid
@@ -15,7 +16,13 @@
   > also, typing after the closing del probably escaped with marks system
 - issue#11: selecting multiple dels and typing doesn't mirror
 
+- unaddressed: nesting identical tags unintentionally (makes nested stronger tags bolder)
+
+
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput
 - clicking/focusing on a list item should focus the end not the focus span
 - must hide and override default LI html marker; bad UX when md FocusMarks delimiter is also displayed
+
+## Tests
+see [focusmark-test-results](./focusmark-test-results.md)

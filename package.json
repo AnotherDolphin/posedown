@@ -70,7 +70,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "playwright test",
-		"test:unit": "vitest run",
+		"test:unit": "vitest run tests/unit",
+		"test:unit:watch": "vitest --watch tests/unit",
 		"format": "prettier --write .",
 		"lint": "prettier --check ."
 	}
