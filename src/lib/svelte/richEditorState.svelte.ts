@@ -198,10 +198,10 @@ export class RichEditorState {
 		// 1. A span was modified (delimiter edited), OR
 		// 2. A span was disconnected (deleted), OR
 		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
+		// ALSO, sometimes activeInline.contains(selection.anchorNode) is false if editing spans at edges
 
-		// Query all focus mark spans in the editor and get the formatted element from span parent
+		// =========================== SPAN MIRRORING ===========================
 		const spans = this.focusMarkManager.inlineSpanRefs
-
 		const spanDisconnected = spans.some(span => !span.isConnected)
 		const spanModified = spans.some(
 			span => span.textContent !== this.focusMarkManager.activeDelimiter
@@ -229,35 +229,48 @@ export class RichEditorState {
 		// 	return // no changes to spans detected, but this should still trigger the NORMAL FLOW below?
 		// }
 
+		
+		
 		// the next code is only needed when spand edited and not removed?
 		const formattedElement = this.focusMarkManager.activeInline
-		if (formattedElement && (spanModified || spanDisconnected)) {
 
+		// =========================== LIVE SPAND EDIT HANDLING (UPDATING/DEFORMATTING) ===========================
+		if (formattedElement && (spanModified || spanDisconnected || formattedElement.contains(selection.anchorNode))) {
 			// 1. unwrap content within formattedElement (de-transform)
 			const cleanClone = formattedElement.cloneNode(true) as HTMLElement
 			cleanClone.normalize() // Merge fragmented text nodes
 			// 1.2 convert insides to md to preserve nested tags unrelated to current focus mark
 			const md = htmlToMarkdown(cleanClone.innerHTML)
 			const { fragment } = markdownToDomFragment(md)
-			// 1.4 replace the formatted element with the fragment (leaving the delimiters, and hence caret, in the dom)
-
+			
 			// Build full block fragment with formattedElement replaced
 			const parentBlock = formattedElement.parentElement!
 			const newBlockFragment = document.createDocumentFragment()
 			parentBlock.childNodes.forEach(child => {
 				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
-				else newBlockFragment.append(child.cloneNode(true))
+					else newBlockFragment.append(child.cloneNode(true))
 			})
-
+			
+			// 1.4 replace the formatted element with the fragment (unwrap) and let smartReplaceChildren handle caret
 			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
-
 			smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
 			this.history.push(this.editableRef)
-
+			
+			// if newBlockFragment doesn't have <spans> and only flat text with md delimiters, we can let NORMAL FLOW handle it
 			return
 		}
 
-		// NORMAL FLOW: check for md patterns and transform
+		// =========================== ACTIVEINLINE BREAKING EDITS ===========================
+		// if activeInline recieved edit that breaks its previous pattern length
+		// (adding text in the middle that is == activeDelimiter)
+		// e.g. **bold** => **bo**ld**
+		// then match a new pattern where the old closing delimiter is now just text
+		// and the new closing focus mark is at the closest valid activeDelimiter to the first span
+
+
+
+		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
+
 		if (findAndTransform(this.editableRef)) {
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
