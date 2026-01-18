@@ -88,7 +88,8 @@ export function setCaretAfterExit(node: Node, selection: Selection): Text | null
 /**
  * Sets cursor position directly after a node without creating exit nodes.
  * Used when you want cursor immediately after an element without intermediary text.
- *
+ * 
+ * @deprecated setCaretAtEnd is safer
  * @param node - The node to position cursor after
  * @param selection - Optional selection object (defaults to window.getSelection())
  * @returns true if successful, false if failed

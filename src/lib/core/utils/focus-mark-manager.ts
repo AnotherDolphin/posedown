@@ -339,6 +339,7 @@ export class FocusMarkManager {
 	 * Public method called when user edits a focus mark span.
 	 * Mirrors the edit to the corresponding span (opening ↔ closing), then unwraps.
 	 * Called from richEditorState.svelte.ts onInput when e.target is a focus mark span.
+	 * @deprecated
 	 */
 	public handleSpanEdit(span: HTMLElement, selection: Selection): void {
 		// Find the formatted element (parent of span)
