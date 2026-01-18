@@ -1,247 +1,270 @@
 # Focus Mark Test Results Analysis
 
-> **⚠️ NOTE:** These results are from the latest run but **pending test adjustments** for issue#6 fix.
-> See [focusmark-test-adjust.md](./focusmark-test-adjust.md) for required test updates before final validation.
-
 **Date:** 2026-01-18
-**Test Run:** After fixing issue#6 (focus span reinjection during pattern transformation)
+**Test Run:** After reorganizing tests and adding new test scenarios from `focusmark-test-adjust.md`
+
+## Test Structure
+
+All focus mark tests are now consolidated under `tests/e2e/focus-marks/`:
 
 ```
-# Run both focus mark test files
-npx playwright test tests/e2e/focus-mark-activation.spec.ts tests/e2e/focus-mark-editing.spec.ts
-
-# Run only activation tests
-npx playwright test tests/e2e/focus-mark-activation.spec.ts
-
-# Run only editing tests
-npx playwright test tests/e2e/focus-mark-editing.spec.ts
+tests/e2e/focus-marks/
+├── activation.spec.ts              # Basic activation/deactivation tests
+├── editing.spec.ts                 # Editing within focus marks
+├── span-mirroring.spec.ts          # Span mirroring behavior
+├── caret-boundary-position.spec.ts # Caret positioning at boundaries
+├── caret-style-persistence.spec.ts # Caret style carryover prevention
+├── span-persistence.spec.ts        # NEW: Span persistence during transformations
+├── nested-transformations.spec.ts  # NEW: Edge cases with nesting
+└── regression.spec.ts              # NEW: Regression tests for issue#5, #6
 ```
+
+**Run command:**
+```bash
+npx playwright test tests/e2e/focus-marks/
+```
+
+---
 
 ## Summary
 
-**Previous Results:** 23/36 passed (63.9%)
-**Current Results:** 24/36 passed (66.7%)
-**Improvement:** +1 test fixed (issue#6 - focus span reinjection)
-
-### Progress
-- ✅ Fixed issue#6: Focus spans now persist during pattern transformations
-- ✅ Fixed issue#5: Caret position stabilized with `setCaretAtEnd`
-- ✅ 1 additional test now passing (from 23 → 24)
-  - Line 272: Mirror closing span edit to opening span ✅ (now passing)
-- ⚠️ Some tests may need expectation updates due to focus spans now persisting
-- ❌ 12 tests still failing (down from 13)
+| Metric | Value |
+|--------|-------|
+| **Total Tests** | 58 |
+| **Passed** | 37 (63.8%) |
+| **Failed** | 21 (36.2%) |
 
 ---
 
-## Category 1: Closing Span Mirroring Issues (4 failures)
+## Results by Spec File
 
-**Root Cause:** Edits made to the closing delimiter span are not being mirrored back to the opening span. The mirroring logic appears to be unidirectional (opening → closing only).
+### activation.spec.ts (14 tests)
+**Passed: 7 | Failed: 7 (50%)**
 
-> ✅ **Improvement:** Line 272 now passing after issue#6 fix (5 → 4 failures)
-
-### Failures:
-
-1. **focus-mark-editing.spec.ts:334** - Mirror closing span for italic → bold
-   - User edits closing `*` to `**`
-   - Expected: Transform to `<strong>`
-   - Actual: Remains as `<em>`
-
-2. **focus-mark-editing.spec.ts:389** - Mirror deletion of closing span
-   - User deletes closing `~~`
-   - Expected: Opening span removed, unwraps to `strike`
-   - Actual: Still shows `~strike~` with both spans visible
-
-3. **focus-mark-editing.spec.ts:442** - Complex text replacement in closing span
-   - User replaces closing `*` with `~~`
-   - Expected: Opening mirrors, unwraps to `~~text~~`, transforms to `<del>`
-   - Actual: Only closing changed, result is `*text~~`
-
-4. **focus-mark-editing.spec.ts:414** - Complex text replacement in opening span
-   - User replaces opening `**` with `___`
-   - Expected: Closing mirrors, unwraps to `___text___`
-   - Actual: Partial mirroring, result is `*___text**`
-
-**Files to Investigate:**
-- `src/lib/svelte/richEditorState.svelte.ts` (lines ~197-261) - span editing logic
-- Look for: Detection of which span was edited (opening vs closing)
-- Likely fix: Add bidirectional mirroring, not just opening → closing
+| Status | Test |
+|--------|------|
+| ✓ | should show marks for element directly after cursor in adjacent text node (issue#34) |
+| ✓ | should prioritize child element over parent when cursor at edge (issue#34) |
+| ✓ | should show focus marks when clicking inside formatted element |
+| ✓ | should hide focus marks when clicking outside formatted element |
+| ✓ | should normalize delimiter syntax (underscore italic becomes asterisk) |
+| ✓ | should normalize delimiter syntax (underscore bold becomes asterisk) |
+| ✓ | should not show marks on newly created formatted elements |
+| ✘ | should show marks for nested element when cursor at edge (issue#34) |
+| ✘ | should show marks for element directly before cursor in adjacent text node (issue#34) |
+| ✘ | should show different marks for different element types |
+| ✘ | should transition marks when navigating between nested elements |
+| ✘ | should show marks for block elements (headings) |
+| ✘ | should show marks for blockquotes |
+| ✘ | should show marks for list items |
 
 ---
 
-## Category 2: Invalid Delimiter Handling (3 failures)
+### editing.spec.ts (5 tests)
+**Passed: 4 | Failed: 1 (80%)**
 
-**Root Cause:** When span edits result in invalid markdown delimiters, the system should unwrap to plain text and NOT re-apply formatting. Currently, it's still applying formatting even for invalid patterns.
-
-### Failures:
-
-1. **focus-mark-editing.spec.ts:110** - Keep mismatched delimiters as plain text
-   - User edits opening `**` to `***`
-   - Expected: Both mirror to `***`, unwrap to `***text***` (plain text, no `<strong>`)
-   - Actual: `<strong>` still visible, invalid delimiter still formats
-
-2. **focus-mark-editing.spec.ts:475** - Character by character typing
-   - User types `x` inside opening `**` span, making it `**x`
-   - Expected: Mirrors to closing, unwraps to `**xtest**x` (plain text)
-   - Actual: `<strong>` still visible, invalid delimiter still formats
-
-3. **focus-mark-editing.spec.ts:573** - Strong tag persistence (caret style carryover)
-   - Complex scenario with multiple transformations
-   - Expected: One `<em>` element
-   - Actual: Strict mode violation - 2 `<em>` elements found
-   - Indicates formatting being applied when it shouldn't
-
-**Files to Investigate:**
-- `src/lib/svelte/richEditorState.svelte.ts` - pattern validation after unwrapping
-- `src/lib/core/parser/pattern.ts` - delimiter validation (SUPPORTED_INLINE_DELIMITERS)
-- Likely fix: After mirroring and unwrapping, validate that the new delimiter is in SUPPORTED_INLINE_DELIMITERS before re-running transform
+| Status | Test |
+|--------|------|
+| ✓ | should change bold to italic by editing opening delimiter |
+| ✓ | should handle typing non-delimiter chars inside focus mark span |
+| ✓ | should unwrap completely when deleting all delimiters |
+| ✓ | should preserve cursor position during unwrap |
+| ✘ | should handle complex edit: change ** to *a* creating italic with different content (issue#10) |
 
 ---
 
-## Category 3: Nested Element Detection (3 failures)
+### span-mirroring.spec.ts (12 tests)
+**Passed: 7 | Failed: 5 (58.3%)**
 
-**Root Cause:** Issue #34 implementation is incomplete. The system is not correctly prioritizing child elements over parent elements when the cursor is at edges or between nested elements.
-
-> ✅ **Improvement:** Line 202 now passing (different marks for different element types)
-
-### Failures:
-
-1. **focus-mark-activation.spec.ts:20** - Nested element when cursor at edge
-   - HTML: `<strong>...<em>text</em></strong>`, cursor at edge of `<em>`
-   - Expected: Show marks for `<em>` (child element)
-   - Actual: No focus marks showing at all
-
-2. **focus-mark-activation.spec.ts:85** - Element before cursor in adjacent text node (issue #34)
-   - Cursor in text node adjacent to formatted element
-   - Expected: Show marks for adjacent formatted element
-   - Actual: No focus marks showing
-
-3. **focus-mark-activation.spec.ts:276** - Transition marks between nested elements
-   - HTML: `<strong>bold and <em>italic</em></strong>`
-   - Navigate from bold part → italic part
-   - Expected: Marks transition from `**` to `*`
-   - Actual: Still showing `**` when inside `<em>`
-
-**Files to Investigate:**
-- `src/lib/core/utils/focus-mark-manager.ts` - `findFocusedInline()` method
-- `src/lib/core/utils/focus-mark-manager.ts` - `checkTextNodeEdges()` helper
-- Current implementation: Uses `getFirstOfAncestors()` which walks up from cursor
-- Issue: Not checking if cursor is at boundary between nested elements
-- Likely fix: Enhance edge detection to check siblings and children, not just ancestors
+| Status | Test |
+|--------|------|
+| ✓ | should mirror opening span edit to closing span |
+| ✓ | should mirror opening span to closing for bold → italic transformation |
+| ✓ | should mirror deletion of opening span to closing span |
+| ✓ | should reject unsupported delimiter during mirroring |
+| ✓ | should handle mirroring when typing character by character in opening span |
+| ✓ | should normalize underscore delimiters and handle mirroring |
+| ✓ | should preserve cursor position after mirroring and unwrap |
+| ✘ | should mirror closing span edit to opening span (issue#7) |
+| ✘ | should mirror deletion of closing span to opening span (issue#3) |
+| ✘ | should mirror complex text replacement in opening span (issue#11) |
+| ✘ | should mirror complex text replacement in closing span with supported delimiter (issue#11) |
+| ✘ | should handle strikethrough delimiter editing (issue#11) |
 
 ---
 
-## Category 4: Block Element Mark Display (2 failures)
+### caret-boundary-position.spec.ts (6 tests)
+**Passed: 3 | Failed: 3 (50%)**
 
-**Root Cause:** Block element marks (blockquotes, list items) are either not showing or showing incorrect delimiters.
-
-### Failures:
-
-1. **focus-mark-activation.spec.ts:365** - List items showing `*` instead of `-`
-   - Created: `- Item` (unordered list)
-   - Expected: Focus mark shows `- `
-   - Actual: Focus mark shows `* `
-   - **This is a real bug** - system should normalize UL to `-`
-
-2. **focus-mark-activation.spec.ts:345** - Blockquote marks
-   - Created: `> Quote`
-   - Expected: Focus mark shows `>`
-   - Actual: Timeout - marks not showing at all
-
-**Files to Investigate:**
-- `src/lib/core/utils/focus-mark-manager.ts` - `extractDelimiters()` (lines ~169-183)
-- Special handling for LI elements exists but may be broken
-- `src/lib/core/parser/html-to-markdown.ts` - Check if UL → `-` conversion works
-- `src/lib/core/utils/focus-mark-manager.ts` - `injectBlockMarks()` may not work for blockquotes
+| Status | Test |
+|--------|------|
+| ✓ | should handle typing delimiter BEFORE opening span (Home position) |
+| ✓ | should handle typing delimiter AFTER closing span (End position) |
+| ✓ | should not jump caret to end of block when typing before focus marks |
+| ✘ | should handle typing delimiter between opening span and text |
+| ✘ | should handle typing delimiter between text and closing span |
+| ✘ | should maintain caret position when typing multiple delimiters at Home |
 
 ---
 
-## Recommended Fix Priority
+### caret-style-persistence.spec.ts (4 tests)
+**Passed: 3 | Failed: 1 (75%)**
 
-### High Priority (Most Impact):
-1. **Fix closing span mirroring** (4 tests) - ✅ 1 fixed
-   - Affects core editing functionality
-   - Implementation: Detect which span was edited, mirror bidirectionally
-   - Location: `richEditorState.svelte.ts` ~lines 197-261
-   - Progress: Line 272 now passing after issue#6 fix
-
-2. **Add invalid delimiter validation** (3 tests)
-   - Prevents formatting bugs
-   - Implementation: Check if unwrapped delimiter is in SUPPORTED_INLINE_DELIMITERS
-   - Location: After unwrap, before re-running transform pipeline
-
-### Medium Priority:
-3. **Fix nested element detection** (3 tests)
-   - Issue #34 follow-up
-   - Implementation: Enhance `findFocusedInline()` edge detection
-   - Location: `focus-mark-manager.ts`
-
-4. **Fix list item delimiter** (1 test)
-   - Simple fix, affects UX
-   - Implementation: Debug `extractDelimiters()` for LI elements
-   - Check `htmlToMarkdown()` UL conversion
-
-### Low Priority:
-5. **Fix blockquote marks** (1 test)
-   - Edge case, less commonly used
-   - Implementation: Debug `injectBlockMarks()` for blockquotes
+| Status | Test |
+|--------|------|
+| ✓ | should NOT persist \<em\> tag after delimiter deletion |
+| ✓ | should NOT persist \<code\> tag after delimiter deletion |
+| ✓ | should escape caret style when transforming bold to italic |
+| ✘ | should NOT persist \<strong\> tag after delimiter deletion due to caret style carryover |
 
 ---
 
-## Test Details
+### span-persistence.spec.ts (4 tests) — NEW
+**Passed: 3 | Failed: 1 (75%)**
 
-### All Failures by File
-
-**focus-mark-activation.spec.ts (5 failures):**
-- Line 20: Nested element at edge (issue #34)
-- Line 85: Element before cursor in adjacent text node (issue #34)
-- Line 276: Transition between nested
-- Line 345: Blockquotes
-- Line 365: List items (wrong delimiter)
-
-**focus-mark-editing.spec.ts (7 failures):**
-- Line 110: Mismatched delimiters
-- ~~Line 272: Closing span mirroring~~ ✅ **FIXED** (issue#6)
-- Line 334: Closing span italic→bold
-- Line 389: Closing span deletion
-- Line 414: Opening span complex replacement
-- Line 442: Closing span complex replacement
-- Line 475: Character-by-character typing
-- Line 573: Tag persistence / strict mode
-
-**Total:** 12 failures (down from 13)
+| Status | Test |
+|--------|------|
+| ✓ | focus spans persist when typing creates new pattern inside active element |
+| ✓ | focus spans are correctly positioned after transformation |
+| ✓ | caret position correct after transformation with span reinjection |
+| ✘ | caret stays in position after creating nested element |
 
 ---
 
-## Next Steps
+### nested-transformations.spec.ts (6 tests) — NEW
+**Passed: 6 | Failed: 0 (100%)**
 
-**Immediate:**
-1. **Update test expectations** for issue#6 fix - see [focusmark-test-adjust.md](./focusmark-test-adjust.md)
-   - Adjust HTML output expectations (~5 tests)
-   - Add regression tests for issue#6 and issue#5
-
-**Implementation:**
-2. Implement bidirectional span mirroring (Category 1 - 4 failures, 1 fixed)
-3. Add delimiter validation before re-transforming (Category 2 - 3 failures)
-4. Enhance nested element edge detection (Category 3 - 3 failures)
-5. Debug list item delimiter extraction (1 failure)
-6. Fix blockquote mark injection (1 failure)
+| Status | Test |
+|--------|------|
+| ✓ | handles multiple pattern transformations with span persistence |
+| ✓ | handles deeply nested formatting without losing outer spans |
+| ✓ | handles transformation when only one span exists |
+| ✓ | handles transformation when span contains selection |
+| ✓ | handles transformation when spans are empty |
+| ✓ | handles rapid sequential transformations |
 
 ---
 
-## Code Locations to Review
+### regression.spec.ts (7 tests) — NEW
+**Passed: 4 | Failed: 3 (57.1%)**
 
-### Primary Files:
-- `src/lib/svelte/richEditorState.svelte.ts` (lines 197-261) - Span editing logic
-- `src/lib/core/utils/focus-mark-manager.ts` - Mark injection/extraction
-- `src/lib/core/parser/pattern.ts` - SUPPORTED_INLINE_DELIMITERS
-
-### Helper Functions:
-- `focus-mark-manager.ts:findFocusedInline()` - Element detection
-- `focus-mark-manager.ts:extractDelimiters()` - Delimiter reverse-engineering
-- `richEditorState.svelte.ts:onInput()` - Input handler with span mirroring
+| Status | Test |
+|--------|------|
+| ✓ | focus spans cleaned up when delimiter becomes unsupported |
+| ✓ | issue#6 regression: focus spans not lost after pattern transformation |
+| ✓ | issue#6 regression: nested pattern creation preserves outer focus marks |
+| ✓ | issue#5 regression: multiple consecutive insertions maintain caret |
+| ✘ | focus spans removed when pattern becomes invalid after transformation |
+| ✘ | issue#5 regression: caret position stable with setCaretAtEnd |
+| ✘ | issue#5 regression: caret stays at insertion point after transformation |
 
 ---
 
-**Status:** 12 failures remaining, categorized by root cause for systematic fixing
+## Failure Categories
 
-**Note:** Test expectations may need adjustment for focus span persistence - see [focusmark-test-adjust.md](./focusmark-test-adjust.md)
+### Category 1: Closing Span Mirroring (3 failures)
+**Root Cause:** Edits to closing delimiter span not mirrored to opening span.
+
+- span-mirroring: should mirror closing span edit to opening span
+- span-mirroring: should mirror deletion of closing span to opening span
+- span-mirroring: should mirror complex text replacement in closing span
+
+**Files:** `richEditorState.svelte.ts` lines ~197-261
+
+---
+
+### Category 2: Complex Mirroring / Selection (3 failures)
+**Root Cause:** Selection-based replacements and complex edits not handled.
+
+- span-mirroring: should mirror complex text replacement in opening span (issue#11)
+- span-mirroring: should handle strikethrough delimiter editing (issue#11)
+- editing: should handle complex edit (issue#10)
+
+**Files:** `richEditorState.svelte.ts` - selection handling in span edit
+
+---
+
+### Category 3: Nested Element Detection (4 failures)
+**Root Cause:** Issue#34 incomplete - child elements not prioritized at edges.
+
+- activation: should show marks for nested element when cursor at edge
+- activation: should show marks for element directly before cursor
+- activation: should transition marks when navigating between nested elements
+- activation: should show different marks for different element types
+
+**Files:** `focus-mark-manager.ts` - `findFocusedInline()` method
+
+---
+
+### Category 4: Block Element Marks (3 failures)
+**Root Cause:** Block marks (headings, blockquotes, lists) not showing.
+
+- activation: should show marks for block elements (headings)
+- activation: should show marks for blockquotes
+- activation: should show marks for list items
+
+**Files:** `focus-mark-manager.ts` - `injectBlockMarks()`
+
+---
+
+### Category 5: Caret Position Edge Cases (5 failures)
+**Root Cause:** Caret jumps or loses position at span boundaries.
+
+- caret-boundary-position: typing delimiter between opening span and text
+- caret-boundary-position: typing delimiter between text and closing span
+- caret-boundary-position: multiple delimiters at Home
+- span-persistence: caret stays in position after creating nested element
+- caret-style-persistence: \<strong\> tag persistence
+
+**Files:** `richEditorState.svelte.ts` - caret restoration logic
+
+---
+
+### Category 6: Regression Test Failures (3 failures)
+**Root Cause:** Specific issue#5 scenarios still broken.
+
+- regression: focus spans removed when pattern becomes invalid
+- regression: issue#5 caret position stable with setCaretAtEnd
+- regression: issue#5 caret stays at insertion point
+
+**Files:** `richEditorState.svelte.ts` - `setCaretAtEnd` implementation
+
+---
+
+## Priority Summary
+
+### High Priority (Core Functionality)
+1. Fix closing span mirroring (3 tests)
+2. Fix caret position edge cases (5 tests)
+3. Fix nested element detection (4 tests)
+
+### Medium Priority (Edge Cases)
+4. Fix complex mirroring/selection (3 tests)
+5. Fix block element marks (3 tests)
+
+### Low Priority (Regression Gaps)
+6. Fix remaining issue#5 regression scenarios (3 tests)
+
+---
+
+## Code Locations
+
+| Component | File | Lines |
+|-----------|------|-------|
+| Span mirroring | `richEditorState.svelte.ts` | ~197-261 |
+| Element detection | `focus-mark-manager.ts` | `findFocusedInline()` |
+| Block marks | `focus-mark-manager.ts` | `injectBlockMarks()` |
+| Caret restoration | `richEditorState.svelte.ts` | `setCaretAtEnd` |
+
+---
+
+## Related Documentation
+
+- [focusmark-test-adjust.md](./focusmark-test-adjust.md) - Test adjustment guide
+- [focusmark-notes.md](./focusmark-notes.md) - Issue tracking
+- [focusMarks-status.md](./focusMarks-status.md) - Implementation status
+- [../focusMarks-design.md](../focusMarks-design.md) - Design documentation
+
+---
+
+**Status:** 37/58 tests passing (63.8%), organized into 8 spec files under `tests/e2e/focus-marks/`
