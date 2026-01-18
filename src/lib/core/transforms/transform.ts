@@ -19,9 +19,6 @@ export const findAndTransform = (
 	const selection = window.getSelection()
 	if (!selection || !selection.anchorNode || !editableRef) return false
 
-	// Note: Focus mark span edits are handled by MutationObserver in FocusMarkManager
-	// The observer automatically calls handleSpanEdit when a span's content changes
-
 	// was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
 	// also, a side effect of code is that emptying a single child automatically makes it a P (even w/o ctrl+a)
 	// Guard clause: ensure editor always has at least <p><br></p>
@@ -40,7 +37,7 @@ export const findAndTransform = (
 	if (!block) return false
 
 	// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
-	// This prevents focus mark spans from being treated as content during transformation.
+	// This prevents focus mark spans from rematching as markdown syntax.
 	const cleanBlock = block.cloneNode(true) as HTMLElement
 	cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
 	cleanBlock.normalize() // Merge fragmented text nodes
@@ -68,7 +65,7 @@ export const findAndTransform = (
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
 	} else {
 		block.replaceWith(fragment)
-		setCaretAtEnd(lastNodeInFragment, selection)
+		setCaretAtEnd(lastNodeInFragment, selection) // issue#8: undo last transform => input pattern again => error range not found
 	}
 
 	return true

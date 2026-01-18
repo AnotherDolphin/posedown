@@ -35,7 +35,7 @@ import {
 	escapeCaretStyle
 } from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
-import { FOCUS_MARK_CLASS, FocusMarkManager } from '../core/utils/focus-mark-manager'
+import { FocusMarkManager } from '../core/utils/focus-mark-manager'
 import { findAndTransform } from '$lib/core/transforms/transform'
 
 // handle, enter on list, manually entering md syntax
@@ -229,35 +229,59 @@ export class RichEditorState {
 		// 	return // no changes to spans detected, but this should still trigger the NORMAL FLOW below?
 		// }
 
-		
-		
 		// the next code is only needed when spand edited and not removed?
 		const formattedElement = this.focusMarkManager.activeInline
 
 		// =========================== LIVE SPAND EDIT HANDLING (UPDATING/DEFORMATTING) ===========================
-		if (formattedElement && (spanModified || spanDisconnected || formattedElement.contains(selection.anchorNode))) {
+		if (formattedElement && (spanModified || spanDisconnected)) {
 			// 1. unwrap content within formattedElement (de-transform)
 			const cleanClone = formattedElement.cloneNode(true) as HTMLElement
 			cleanClone.normalize() // Merge fragmented text nodes
 			// 1.2 convert insides to md to preserve nested tags unrelated to current focus mark
 			const md = htmlToMarkdown(cleanClone.innerHTML)
 			const { fragment } = markdownToDomFragment(md)
-			
+
 			// Build full block fragment with formattedElement replaced
 			const parentBlock = formattedElement.parentElement!
 			const newBlockFragment = document.createDocumentFragment()
 			parentBlock.childNodes.forEach(child => {
 				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
-					else newBlockFragment.append(child.cloneNode(true))
+				else newBlockFragment.append(child.cloneNode(true))
 			})
-			
+
 			// 1.4 replace the formatted element with the fragment (unwrap) and let smartReplaceChildren handle caret
 			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 			smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
 			this.history.push(this.editableRef)
-			
+
 			// if newBlockFragment doesn't have <spans> and only flat text with md delimiters, we can let NORMAL FLOW handle it
 			return
+		}
+
+		// ==================== HANDLE PATTERNS INSIDE AN ACTIVE INLINE ELM ================
+		if (formattedElement && formattedElement.contains(selection.anchorNode)) {
+			// Extract focus spans (remove from DOM but keep references)
+			const [startSpan, endSpan] = this.focusMarkManager.inlineSpanRefs
+			startSpan?.remove()
+			endSpan?.remove()
+
+			const hasInlinePattern = findFirstMarkdownMatch(formattedElement.textContent || '')
+			if (hasInlinePattern) {
+				const contentInMd = htmlBlockToMarkdown(formattedElement)
+				const { fragment } = markdownToDomFragment(contentInMd)
+				smartReplaceChildren(formattedElement, fragment, selection, hasInlinePattern)
+
+				// Reinject extracted spans
+				if (startSpan) formattedElement.prepend(startSpan)
+				if (endSpan) formattedElement.append(endSpan)
+
+				this.skipNextFocusMarks = true
+				this.history.push(this.editableRef)
+				return
+			}
+			// No pattern found - put spans back
+			if (startSpan) formattedElement.prepend(startSpan)
+			if (endSpan) formattedElement.append(endSpan)
 		}
 
 		// =========================== ACTIVEINLINE BREAKING EDITS ===========================
@@ -267,10 +291,9 @@ export class RichEditorState {
 		// then match a new pattern where the old closing delimiter is now just text
 		// and the new closing focus mark is at the closest valid activeDelimiter to the first span
 
-
-
 		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
 
+		// future: optimize to only check current node for new marks instead of checking whole block
 		if (findAndTransform(this.editableRef)) {
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
@@ -418,7 +441,9 @@ export class RichEditorState {
 			outermostElBeforeCaret.remove()
 		}
 
-		setCaretAfter(textNode, selection)
+		// setCaretAfter(textNode, selection) // issue#5 fails sometimes for new patterns inside activeElement
+		setCaretAtEnd(textNode, selection) // fix#5
+
 		this.onInput(e) // trigger input handler to save state and handle md patterns
 		this.marks = null
 	}
