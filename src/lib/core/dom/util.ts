@@ -7,15 +7,20 @@ export const getFirstTextNode = (node: Node): Text | null => {
 	return null
 }
 
-/** gemini
- * @deprecated
+/**
  * Creates a DOM Range based on global offsets within a block element.
  * This decouples pattern detection (string-based) from DOM structure (node-based).
+
+ * @param element - The node to traverse
+ * @param startOffset - Global character offset for range start (0-indexed)
+ * @param endOffset - Global character offset for range end (defaults to startOffset for collapsed range)
+ * @returns A DOM Range object positioned at the specified offsets
+ *
  */
-export const getRangeFromBlockOffsets = (
-	block: Node,
+export const getDomRangeFromContentOffsets = (
+	element: Node,
 	startOffset: number,
-	endOffset: number
+	endOffset: number = startOffset
 ): Range => {
 	const range = document.createRange()
 	let currentGlobalOffset = 0
@@ -51,11 +56,11 @@ export const getRangeFromBlockOffsets = (
 		}
 	}
 
-	traverse(block)
+	traverse(element)
 
 	// Fallback: If indices were out of bounds (shouldn't happen with valid matches), collapse to end
-	if (!startFound) range.setStart(block, 0)
-	if (!endFound) range.setEnd(block, block.childNodes.length)
+	if (!startFound) range.setStart(element, 0)
+	if (!endFound) range.setEnd(element, element.childNodes.length)
 
 	return range
 }

@@ -1,7 +1,7 @@
 # Focus Mark Test Results Analysis
 
-**Date:** 2026-01-18
-**Test Run:** After reorganizing tests and adding new test scenarios from `focusmark-test-adjust.md`
+**Date:** 2026-01-19
+**Test Run:** After refactoring `smartReplaceChildren` with unified offsetToCaret for consistent tracking inside/outside active elements
 
 ## Test Structure
 
@@ -31,15 +31,17 @@ npx playwright test tests/e2e/focus-marks/
 | Metric | Value |
 |--------|-------|
 | **Total Tests** | 58 |
-| **Passed** | 37 (63.8%) |
-| **Failed** | 21 (36.2%) |
+| **Passed** | 38 (65.5%) |
+| **Failed** | 20 (34.5%) |
+
+**Change from baseline (2026-01-18):** +1 passing test (+1.7%)
 
 ---
 
 ## Results by Spec File
 
 ### activation.spec.ts (14 tests)
-**Passed: 7 | Failed: 7 (50%)**
+**Passed: 8 | Failed: 6 (57.1%)**
 
 | Status | Test |
 |--------|------|
@@ -50,12 +52,12 @@ npx playwright test tests/e2e/focus-marks/
 | ✓ | should normalize delimiter syntax (underscore italic becomes asterisk) |
 | ✓ | should normalize delimiter syntax (underscore bold becomes asterisk) |
 | ✓ | should not show marks on newly created formatted elements |
+| ✓ | should show marks for blockquotes |
 | ✘ | should show marks for nested element when cursor at edge (issue#34) |
 | ✘ | should show marks for element directly before cursor in adjacent text node (issue#34) |
 | ✘ | should show different marks for different element types |
 | ✘ | should transition marks when navigating between nested elements |
 | ✘ | should show marks for block elements (headings) |
-| ✘ | should show marks for blockquotes |
 | ✘ | should show marks for list items |
 
 ---
@@ -196,11 +198,10 @@ npx playwright test tests/e2e/focus-marks/
 
 ---
 
-### Category 4: Block Element Marks (3 failures)
-**Root Cause:** Block marks (headings, blockquotes, lists) not showing.
+### Category 4: Block Element Marks (2 failures)
+**Root Cause:** Block marks (headings, lists) not showing.
 
 - activation: should show marks for block elements (headings)
-- activation: should show marks for blockquotes
 - activation: should show marks for list items
 
 **Files:** `focus-mark-manager.ts` - `injectBlockMarks()`
@@ -240,7 +241,7 @@ npx playwright test tests/e2e/focus-marks/
 
 ### Medium Priority (Edge Cases)
 4. Fix complex mirroring/selection (3 tests)
-5. Fix block element marks (3 tests)
+5. Fix block element marks (2 tests)
 
 ### Low Priority (Regression Gaps)
 6. Fix remaining issue#5 regression scenarios (3 tests)
@@ -267,4 +268,13 @@ npx playwright test tests/e2e/focus-marks/
 
 ---
 
-**Status:** 37/58 tests passing (63.8%), organized into 8 spec files under `tests/e2e/focus-marks/`
+**Status:** 38/58 tests passing (65.5%), organized into 8 spec files under `tests/e2e/focus-marks/`
+
+---
+
+## Recent Improvements
+
+**2026-01-19:** Refactored `smartReplaceChildren` with unified `offsetToCaret` for consistent caret tracking inside/outside active elements; standardized `getDomRangeFromContentOffsets`.
+- Fixed blockquote focus mark activation
+- Improved caret positioning consistency across block/inline elements
+- **Result:** +1 passing test (blockquotes activation)

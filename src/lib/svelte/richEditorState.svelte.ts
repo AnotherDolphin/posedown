@@ -26,7 +26,7 @@ import {
 	endsWithValidDelimiter,
 	isEditorEmpty
 } from '../core/utils/dom'
-import { smartReplaceChildren, getRangeFromBlockOffsets } from '../core/dom'
+import { smartReplaceChildren } from '../core/dom'
 import {
 	setCaretAtEnd,
 	setCaretAfterExit,
@@ -243,7 +243,7 @@ export class RichEditorState {
 			// Build full block fragment with formattedElement replaced
 			const parentBlock = formattedElement.parentElement!
 			const newBlockFragment = document.createDocumentFragment()
-			parentBlock.childNodes.forEach(child => {
+			parentBlock.childNodes.forEach(child => { // issue#343: Cannot read properties of null (reading 'childNodes')
 				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
 				else newBlockFragment.append(child.cloneNode(true))
 			})
@@ -441,8 +441,7 @@ export class RichEditorState {
 			outermostElBeforeCaret.remove()
 		}
 
-		// setCaretAfter(textNode, selection) // issue#5 fails sometimes for new patterns inside activeElement
-		setCaretAtEnd(textNode, selection) // fix#5
+		setCaretAtEnd(textNode, selection)
 
 		this.onInput(e) // trigger input handler to save state and handle md patterns
 		this.marks = null

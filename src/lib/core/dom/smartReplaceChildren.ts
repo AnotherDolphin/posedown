@@ -1,5 +1,5 @@
 import { setCaretAtEnd } from '../utils/selection'
-import { getFirstTextNode, getRangeFromBlockOffsets } from './util'
+import { getFirstTextNode, getDomRangeFromContentOffsets } from './util'
 
 /**
  * Reconcile and replace a parent's child nodes from a new fragment while
@@ -42,28 +42,25 @@ export const smartReplaceChildren = (
 	const anchorNode = selection.anchorNode
 	let caretRestored = false
 	let caretFound = false
-	let anchorOffset = selection.anchorOffset // issue#77: works for normal flow
+	let offsetToCaret = Infinity
 
-	// Calculate delimiter offset if pattern matched
-	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
-		// Get cursor's text offset in the block
+	// Calculate text offset from parent start to caret position
+	if (anchorNode && parent.contains(anchorNode)) {
 		const range = document.createRange()
 		range.setStart(parent, 0)
 		range.setEnd(anchorNode, selection.anchorOffset)
-		const cursorOffset = range.toString().length
-		// debugger
-		// anchorOffset = cursorOffset // issue#77: works for patterns inside activeElement, but not span edit, nor normal flow
-		// console.log(range, anchorOffset)
+		offsetToCaret = range.toString().length
+	}
 
-		// Calculate how many delimiter chars to subtract based on cursor position
-		// Pattern delimiters: opening + closing = 2 * delimiterLength
-		if (cursorOffset >= patternMatch.end) {
+	// Calculate removed delimiter offset if pattern matched
+	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
+		if (offsetToCaret >= patternMatch.end) {
 			// ISSUE#1: IF CARET INSIDE FOCUS MARK, IT CAN EUQUAL 1 OR 2 AND END UP NEGATIVE
 			// Cursor AT or AFTER pattern → subtract both opening & closing delimiters
-			anchorOffset -= patternMatch.delimiterLength * 2
-		} else if (cursorOffset >= patternMatch.start + patternMatch.delimiterLength) {
+			offsetToCaret -= patternMatch.delimiterLength * 2
+		} else if (offsetToCaret >= patternMatch.start + patternMatch.delimiterLength) {
 			// Cursor INSIDE pattern (after opening delimiter) → subtract opening only
-			anchorOffset -= patternMatch.delimiterLength
+			offsetToCaret -= patternMatch.delimiterLength
 		}
 		// If cursor is BEFORE pattern start → no adjustment needed
 	}
@@ -87,17 +84,15 @@ export const smartReplaceChildren = (
 			// Check if cursor should be in this node
 			if (caretFound && !caretRestored) {
 				const nodeLength = newNode.textContent?.length || 0
-				if (anchorOffset <= nodeLength) {
+				if (offsetToCaret <= nodeLength) {
 					// Place cursor at specific offset
-					// ISSUE#2: not neccessarily "first text node" -- must correct to getRangeFromBlockOffsets like below
-					const textNode = getFirstTextNode(newNode)
-					if (textNode) {
-						selection.collapse(textNode, anchorOffset)
-						caretRestored = true
-					}
+					const range = getDomRangeFromContentOffsets(newNode, offsetToCaret)
+					selection.removeAllRanges()
+					selection.addRange(range)
+					caretRestored = true
 				} else {
 					// Cursor is beyond this node
-					anchorOffset -= nodeLength
+					offsetToCaret -= nodeLength
 				}
 			} else if (!caretRestored && i === newNodes.length - 1) {
 				// Last node fallback
@@ -108,12 +103,12 @@ export const smartReplaceChildren = (
 		}
 
 		// Case C: Nodes are Identical -> Do Nothing (Preserve Ref & Cursor)
-		// isEqualNode checks attributes, tag name, and text content (recursively)
 		if (oldNode.isEqualNode(newNode)) {
 			// Check if cursor was here. If so, it's already safe because we didn't touch the node!
 			if (anchorNode && (oldNode === anchorNode || oldNode.contains(anchorNode))) {
 				caretRestored = true
 			}
+			offsetToCaret -= oldNode.textContent?.length || 0
 			continue
 		}
 
@@ -127,20 +122,20 @@ export const smartReplaceChildren = (
 		// 3. Swap
 		parent.replaceChild(newNode, oldNode)
 
-		// 4. Restore Cursor with specific offset (if we're tracking it)
+		// 4. Restore caret
 		if (caretFound && !caretRestored) {
 			const nodeLength = newNode.textContent?.length || 0
-			if (anchorOffset <= nodeLength) {
+			if (offsetToCaret <= nodeLength) {
 				// Cursor should be in THIS node at specific offset
 				// Use getRangeFromBlockOffsets to find the correct text node
 				// (newNode may have nested elements, cursor isn't always in first text node)
-				const range = getRangeFromBlockOffsets(newNode, anchorOffset, anchorOffset)
+				const range = getDomRangeFromContentOffsets(newNode, offsetToCaret)
 				selection.removeAllRanges()
 				selection.addRange(range)
 				caretRestored = true
 			} else {
 				// Cursor is beyond this node - continue tracking
-				anchorOffset -= nodeLength
+				offsetToCaret -= nodeLength
 			}
 		}
 	}

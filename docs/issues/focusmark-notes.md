@@ -2,24 +2,26 @@
 
 ### focus mark issues
 
-- adding delimiters to change format causes caret to get to the end of block, because caret before marks types marks outside of it
-- caret before marks and del delete all of them
-- issue#3: deleting from the end doesn't restore caret properly
-- issue#3.2: causing consecutive input/backspace to apply somewhere else
+- adding delimiters to change format causes caret to get to the end of block, because caret before marks types marks outside of it (+test)
+  > if there's an activeInline that is activated because we are at the edge of/right outside; also make any new input that is a valid delimeter go inside of to trigger a proper edit
+- caret before marks and del deletes all of them if delimiter length > 1
+- issue#3: deleting from the end doesn't restore caret properly ✅
+- issue#3.2: causing consecutive input/backspace to apply somewhere else ✅
 - issue#5: setCaretAfter fails for new patterns inside activeElement ✅
   > fixed with setCaretAtEnd
 - issue#6: focus spans lost after pattern transformation inside active inline element ✅
   > fixed by extracting spans before transformation and reinjecting after
-- **MAJOR** issue#10: adding same delimiters in the middle doesn't break and match the first half
+- **MAJOR** issue#10: adding same delimiters in the middle doesn't break and match the first half (+test)
   > also, typing a rogue delimiter like "**bold`*|` and *italic***" causes unexpected commonmark spec [behavior](./commonmark-breaking-spec.md)
 - issue#11: deleting into a non-pattern (~~ => ~) doesn't mirror 1 nor 2 backspaces
+  > todo: make the default <del> a single ~ not ~~ in our pipeline
   > onInput system needs normal overall pattern checks even if nothing in the activeInline prompts update
-- Issue#9: spans don't unwrap as simple text when delimiters become invalid
-- issue#7: typing delimiters (like * => **) doesn't update format
-  > expect only if the caret was right after the opening delimter. This is an issue of being typed inside vs right beside a span
-  > also, typing after the closing del probably escaped with marks system
-- issue#12: selecting multiple dels and typing doesn't mirror
-- issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:68](src/lib/core/transforms/transform.ts#L68)
+- Issue#9: spans don't unwrap as simple text when delimiters become invalid (+test)
+- issue#7: typing delimiters (like * => **) doesn't update format if the caret was right after/before the opening/closing delimter. This is an issue of being typed inside vs right beside a span ⏳
+  > also, typing after the closing mark probably escaped with marks system
+- issue#12: selecting multiple dels and typing doesn't mirror 
+- issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:70](/src/lib/core/transforms/transform.ts#L70)
+- issue#343: Cannot read properties of null (reading 'childNodes') [richEditorState.svelte.ts:246](/src/lib/svelte/richEditorState.svelte.ts#L246)
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput
