@@ -252,6 +252,9 @@ export class RichEditorState {
 			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 			smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
 			this.history.push(this.editableRef)
+			// issue#67: (fix) onSelectionChange doesn't trigger if caret before openning marks then press del (adjacent)
+			// so the next line is needed
+			this.focusMarkManager.update(selection, this.editableRef)
 
 			// if newBlockFragment doesn't have <spans> and only flat text with md delimiters, we can let NORMAL FLOW handle it
 			return

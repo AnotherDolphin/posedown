@@ -4,7 +4,7 @@
 
 - adding delimiters to change format causes caret to get to the end of block, because caret before marks types marks outside of it (+test)
   > if there's an activeInline that is activated because we are at the edge of/right outside; also make any new input that is a valid delimeter go inside of to trigger a proper edit
-- caret before marks and del deletes all of them if delimiter length > 1
+- issue#67: caret before marks and del deletes all of them if delimiter length > 1 ✅
 - issue#3: deleting from the end doesn't restore caret properly ✅
 - issue#3.2: causing consecutive input/backspace to apply somewhere else ✅
 - issue#5: setCaretAfter fails for new patterns inside activeElement ✅
