@@ -21,13 +21,12 @@ import {
 	handleBackspaceKey,
 	handleTabKey,
 	handleShiftTabKey,
-	getRangeFromBlockOffsets,
 	hasSemanticTags,
 	processMarkdownInTextNodes,
-	smartReplaceChildren,
 	endsWithValidDelimiter,
 	isEditorEmpty
 } from '../core/utils/dom'
+import { smartReplaceChildren, getRangeFromBlockOffsets } from '../core/dom'
 import {
 	setCaretAtEnd,
 	setCaretAfterExit,
@@ -59,12 +58,12 @@ export class RichEditorState {
 		this.html = markdownToHtml(markdown)
 
 		// Debug: Track marks state changes
-		$inspect(this.marks).with((type, marks) => {
-			console.log(`[MARKS ${type.toUpperCase()}]`, marks)
-			if (marks && marks.length > 0) {
-				console.log('  Elements:', marks.map(m => m.nodeName).join(' > '))
-			}
-		})
+		// $inspect(this.marks).with((type, marks) => {
+		// 	console.log(`[MARKS ${type.toUpperCase()}]`, marks)
+		// 	if (marks && marks.length > 0) {
+		// 		console.log('  Elements:', marks.map(m => m.nodeName).join(' > '))
+		// 	}
+		// })
 
 		$effect(() => {
 			if (!this.editableRef) return
@@ -261,6 +260,7 @@ export class RichEditorState {
 		// ==================== HANDLE PATTERNS INSIDE AN ACTIVE INLINE ELM ================
 		if (formattedElement && formattedElement.contains(selection.anchorNode)) {
 			// Extract focus spans (remove from DOM but keep references)
+			// todo: optimize by using a clone (so we don't need to remove spans just to check pattern)
 			const [startSpan, endSpan] = this.focusMarkManager.inlineSpanRefs
 			startSpan?.remove()
 			endSpan?.remove()

@@ -1,10 +1,10 @@
 import {
-	smartReplaceChildren,
 	setCaretAtEnd,
 	getMainParentBlock,
 	findFirstMarkdownMatch,
 	isBlockPattern
 } from '../utils'
+import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS } from '../utils/focus-mark-manager'
 import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
 
