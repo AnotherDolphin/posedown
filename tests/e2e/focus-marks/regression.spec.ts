@@ -297,4 +297,218 @@ test.describe('Rich Editor - Focus Mark Regression Tests', () => {
 		expect(indexOf1).toBeLessThan(indexOf2)
 		expect(indexOf2).toBeLessThan(indexOf3)
 	})
+
+	// ============== ISSUE#9 - INVALID DELIMITER UNWRAPPING ==============
+
+	test('issue#9: valid italic pattern becomes invalid when delimiter edited - unwraps to plain text', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Create valid italic: *italic*
+		await editor.pressSequentially('*italic*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// Click to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		// Navigate to opening delimiter and add character to make it invalid
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // into opening span
+		await page.keyboard.type('a') // Makes '*a' which is invalid
+		await page.waitForTimeout(100)
+
+		// Blur to trigger unwrapping
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Verify: No em element remains
+		await expect(em).not.toBeVisible()
+
+		// Verify: Content is plain text
+		const text = await editor.textContent()
+		expect(text).toContain('*a')
+		expect(text).toContain('italic*')
+
+		// Verify: No focus marks remain
+		const spans = await editor.locator('.pd-focus-mark').count()
+		expect(spans).toBe(0)
+	})
+
+	test('issue#9: deleting part of closing delimiter makes pattern invalid - unwraps to plain text', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Create valid bold: **bold**
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		// Navigate to closing delimiter and delete one *
+		await page.keyboard.press('End')
+		await page.keyboard.press('ArrowLeft') // into closing span
+		await page.keyboard.press('Backspace') // Delete one *, leaves only *
+		await page.waitForTimeout(100)
+
+		// Blur to trigger unwrapping
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Verify: No strong element remains
+		await expect(strong).not.toBeVisible()
+
+		// Verify: Content is plain text with mismatched delimiters
+		const text = await editor.textContent()
+		expect(text).toContain('**bold')
+		expect(text).toContain('*') // Only one * at end
+
+		// Verify: No focus marks remain
+		const spans = await editor.locator('.pd-focus-mark').count()
+		expect(spans).toBe(0)
+	})
+
+	test('issue#9: typing inside opening delimiter makes pattern invalid - unwraps to plain text', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Create valid strikethrough: ~~strike~~
+		await editor.pressSequentially('~~strike~~')
+		await page.waitForTimeout(100)
+
+		const del = editor.locator('del')
+		await expect(del).toBeVisible()
+
+		// Click to show focus marks
+		await del.click()
+		await page.waitForTimeout(50)
+
+		// Navigate into opening delimiter span and type letter
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // into opening span
+		await page.keyboard.press('ArrowRight') // past first ~
+		await page.keyboard.type('x') // Makes '~~x' which breaks the pattern
+		await page.waitForTimeout(100)
+
+		// Blur to trigger unwrapping
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Verify: No del element remains
+		await expect(del).not.toBeVisible()
+
+		// Verify: Content is plain text
+		const text = await editor.textContent()
+		expect(text).toContain('~~x')
+		expect(text).toContain('strike~~')
+
+		// Verify: No focus marks remain
+		const spans = await editor.locator('.pd-focus-mark').count()
+		expect(spans).toBe(0)
+	})
+
+	test('issue#9: transition from valid to invalid pattern stays as plain text', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Create valid code: `code`
+		await editor.pressSequentially('`code`')
+		await page.waitForTimeout(100)
+
+		const code = editor.locator('code')
+		await expect(code).toBeVisible()
+
+		// Click to show focus marks
+		await code.click()
+		await page.waitForTimeout(50)
+
+		// Add another ` at the beginning to make ``code` (invalid)
+		await page.keyboard.press('Home')
+		await page.keyboard.type('`')
+		await page.waitForTimeout(100)
+
+		// Blur
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Verify: Pattern is now invalid, no code element
+		await expect(code).not.toBeVisible()
+
+		// Verify: Plain text remains
+		const text = await editor.textContent()
+		expect(text).toContain('``code`')
+
+		// Type again - should stay as plain text
+		await editor.click()
+		await page.keyboard.press('End')
+		await page.keyboard.type('X')
+		await page.waitForTimeout(100)
+
+		// Still no code element
+		await expect(code).not.toBeVisible()
+
+		const finalText = await editor.textContent()
+		expect(finalText).toContain('``code`X')
+	})
+
+	test('issue#9: removing characters from delimiter restores valid pattern', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Create valid bold: **bold**
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		let strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// Click and make it invalid by adding character
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight')
+		await page.keyboard.type('x') // Makes '**x' - invalid
+		await page.waitForTimeout(100)
+
+		// Blur - should unwrap
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		await expect(strong).not.toBeVisible()
+
+		// Now click back in and remove the 'x' to restore validity
+		await editor.click()
+		await page.waitForTimeout(50)
+
+		// Find and delete the 'x'
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // past *
+		await page.keyboard.press('ArrowRight') // past *
+		await page.keyboard.press('Delete') // delete x
+		await page.waitForTimeout(100)
+
+		// Blur to reparse
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Verify: Pattern is valid again, strong element restored
+		strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		const text = await strong.textContent()
+		expect(text).toBe('bold')
+	})
 })
+
