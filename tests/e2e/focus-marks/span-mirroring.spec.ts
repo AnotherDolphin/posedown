@@ -425,4 +425,73 @@ test.describe('Rich Editor - Focus Mark Span Mirroring', () => {
 		const text = await editor.locator('p').textContent()
 		expect(text).toBe('strike')
 	})
+
+	test('should handle single tilde delete element - backspace from opening delimiter', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create strikethrough text with single tilde
+		await editor.pressSequentially('~strike~')
+		await page.waitForTimeout(100)
+
+		const del = editor.locator('del')
+		await expect(del).toBeVisible()
+		await expect(del).toContainText('strike')
+
+		// 2. Click and verify focus marks show single ~
+		await del.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.first()).toContainText('~')
+		await expect(focusMarks.first()).not.toContainText('~~')
+
+		// 3. Navigate into opening delimiter and delete single tilde
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight')
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(100)
+
+		// '~' is a SUPPORTED_INLINE_DELIMITER, and empty string (complete deletion) is allowed
+		// With mirroring: both delimiters become empty, unwrap to plain text
+		await expect(del).not.toBeVisible()
+		const text = await editor.locator('p').textContent()
+		expect(text).toBe('strike')
+	})
+
+	test('should handle single tilde delete element - backspace from closing delimiter', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create strikethrough text with single tilde
+		await editor.pressSequentially('~text~')
+		await page.waitForTimeout(100)
+
+		const del = editor.locator('del')
+		await expect(del).toBeVisible()
+		await expect(del).toContainText('text')
+
+		// 2. Click and verify focus marks show single ~
+		await del.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.last()).toContainText('~')
+		await expect(focusMarks.last()).not.toContainText('~~')
+
+		// 3. Navigate to closing delimiter and delete single tilde
+		await page.keyboard.press('End')
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(100)
+
+		// '~' is a SUPPORTED_INLINE_DELIMITER, and empty string (complete deletion) is allowed
+		// With mirroring: both delimiters become empty, unwrap to plain text
+		await expect(del).not.toBeVisible()
+		const text = await editor.locator('p').textContent()
+		expect(text).toBe('text')
+	})
 })

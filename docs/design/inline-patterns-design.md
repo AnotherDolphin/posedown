@@ -1,6 +1,6 @@
 # Inline Pattern System
 
-> Transforming markdown inline syntax (**, *, ~~, `, etc.) into formatted HTML elements in real-time
+> Transforming markdown inline syntax (**, *, ~, `, etc.) into formatted HTML elements in real-time
 
 ## Overview
 
@@ -46,9 +46,11 @@ Patterns are checked in definition order. The first matching pattern is applied.
 **Why**: Predictable behavior, faster than "best-match" algorithms, easier to reason about.
 
 **Implementation**: Patterns are defined in a specific order in `inline-patterns.ts:51-77`:
-- Double-char delimiters first (`**`, `~~`, `==`, `__`)
+- Double-char delimiters first (`**`, `==`, `__`)
 - Single-char delimiters second (`*`, `_`, `^`, `~`)
 - Complex patterns last (links, images, wiki links)
+
+**Note**: Strikethrough uses single tilde (`~`) as the normalized delimiter. While both `~` and `~~` are accepted during parsing, serialization always outputs single `~`.
 
 ### 2. Nesting Prevention for Single-Character Delimiters
 
@@ -107,7 +109,7 @@ Pattern matching only occurs within text nodes, not element nodes.
 Creates parameterized regex patterns to avoid code repetition.
 
 **Parameters**:
-- `delimiter`: The markdown syntax (`**`, `*`, `~~`, `` ` ``, etc.)
+- `delimiter`: The markdown syntax (`**`, `*`, `~`, `` ` ``, etc.)
 - `allowSpaceAfterOpening`: Whether to allow space after opening delimiter (true for code blocks)
 - `preventNesting`: Whether to add negative lookahead/lookbehind (true for single-char delimiters)
 
@@ -132,7 +134,7 @@ code: createInlinePattern('`', true)
 - `` `code` `` → `<code>`
 
 **GitHub Flavored Markdown**:
-- `~~strikethrough~~` → `<s>` or `<del>`
+- `~strikethrough~` → `<del>` (single tilde, see Design Decision 5)
 
 **Extended Syntax**:
 - `==highlight==` → `<mark>`
@@ -328,6 +330,25 @@ Output: <a href="https://example.com">Click here</a>
 
 **Decision**: Use AST conversion for correctness and consistency.
 
+### Single Tilde for Strikethrough
+
+**Decision**: Use single tilde (`~`) as the normalized delimiter for strikethrough/delete elements.
+
+**Primary Benefit - Span Mirroring UX**:
+Single backspace unwraps `<del>` cleanly via mirroring (both spans empty). With `~~`, deleting one `~` creates invalid `~text~~` - spans disconnect before mirroring completes, leaving 3 tildes for manual deletion.
+
+**Implementation**:
+- **Input**: Both `~text~` and `~~text~~` create `<del>` elements (gfm extension supports both)
+- **Core/Serialization**: Always normalizes to single `~` via custom delete handler (ast-utils.ts:43-61)
+- **Focus Marks**: Display single `~` when cursor enters `<del>` elements
+
+**Trade-offs**:
+- ✅ Better focus mark editing UX (1 manual deletion vs 3)
+- ✅ Less visual clutter
+- ⚠️ Deviates from official GFM spec (but GitHub-compatible)
+
+**Related**: See [focusMarks-design.md](../focusMarks-design.md#decision-7-single-tilde-delimiter) for focus mark implications.
+
 ## Known Limitations
 
 ### 1. Overlapping Patterns
@@ -379,7 +400,7 @@ Output: May incorrectly match wiki link pattern
 ### Manual Testing
 
 **Test Pattern Transformations**:
-1. Type each pattern: `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``
+1. Type each pattern: `**bold**`, `*italic*`, `~strike~`, `` `code` ``
 2. Verify immediate transformation to HTML
 3. Check cursor position after transformation
 

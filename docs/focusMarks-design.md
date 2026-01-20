@@ -317,7 +317,44 @@ private activeBlock: HTMLElement | null = null
 return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS)
 ```
 
-### Decision 7: Cursor Positioning After Transformations
+### Decision 7: Single Tilde Delimiter for Delete/Strikethrough
+
+**Decision:** Use single tilde (`~`) as the normalized delimiter for `<del>` elements.
+
+**Primary Benefit - Span Editing UX:**
+Single backspace unwraps the `<del>` element cleanly. The deleted `~` mirrors to the other span (both empty), triggering unwrap. With `~~`, deleting one `~` creates invalid pattern `~text~~` - spans disconnect before mirroring, leaving 3 tildes requiring manual deletion.
+
+**Implementation:**
+```typescript
+// ast-utils.ts - Custom delete handler (lines 43-61)
+delete: ((node: Delete, _, state, info) => {
+  const tracker = state.createTracker(info)
+  const exit = state.enter('strikethrough')
+  let value = tracker.move('~')  // Single ~ instead of ~~
+  value += state.containerPhrasing(node, { ...tracker.current(), before: value, after: '~' })
+  value += tracker.move('~')
+  exit()
+  return value
+}) as Handle
+```
+
+**Note:** Full handler required because `gfmToMarkdown()` doesn't provide delimiter configuration option.
+
+**Parsing vs Serialization:**
+- **Input**: Both `~text~` and `~~text~~` create `<del>` elements (gfm supports both by default)
+- **Core/Output**: Always serializes to single `~`
+- **Focus Marks**: Show single `~` when entering `<del>` elements
+
+**Trade-offs:**
+- ✅ Better span editing UX (1 manual deletion vs 3)
+- ✅ Less visual clutter
+- ⚠️ Deviates from official GFM spec (but GitHub-compatible)
+
+**Testing:** See `activation.spec.ts:276-297` and `span-mirroring.spec.ts:429-496`
+
+**Related**: See [inline-patterns-design.md](./design/inline-patterns-design.md#single-tilde-for-strikethrough).
+
+### Decision 8: Cursor Positioning After Transformations
 
 **Problem:** When pattern detection transforms markdown to HTML, cursor position must be preserved. Naive approaches fail because:
 - String-based pattern detection works with plain text offsets
@@ -359,6 +396,8 @@ selection.collapse(range.endContainer, range.endOffset)
 **Used in:**
 - `smartReplaceChildren()` - inline pattern transformations
 - `handleSpanEdit()` - delimiter span unwrapping (via calculateCursorOffset + restoreCursor)
+
+**Note on strikethrough**: Single tilde (`~`) delimiters are used instead of double tilde (`~~`) - see Decision 7 above.
 
 ## Technical Details
 

@@ -4,9 +4,11 @@ import { toHtml } from 'hast-util-to-html'
 import { fromHtml } from 'hast-util-from-html'
 import { toMdast } from 'hast-util-to-mdast'
 import { toMarkdown } from 'mdast-util-to-markdown'
+import type { Handle } from 'mdast-util-to-markdown'
 import { gfm } from 'micromark-extension-gfm'
 import { gfmFromMarkdown, gfmToMarkdown } from 'mdast-util-gfm'
-import type { RootContent as MdastContent, Nodes as MdastNodes } from 'mdast'
+import { gfmStrikethroughFromMarkdown } from 'mdast-util-gfm-strikethrough'
+import type { RootContent as MdastContent, Nodes as MdastNodes, Delete } from 'mdast'
 import type { Nodes as HastNodes, RootContent as HastRootContent } from 'hast'
 import { toDom } from 'hast-util-to-dom'
 import { remove } from 'unist-util-remove'
@@ -18,8 +20,13 @@ import { extractPatternPrefix } from '../utils/block-patterns'
 
 export const parseMarkdownToMdast = (md: string) => {
 	const mdast = fromMarkdown(md, {
-		extensions: [gfm()],
-		mdastExtensions: [gfmFromMarkdown()]
+		extensions: [
+			gfm(),
+		],
+		mdastExtensions: [
+			gfmFromMarkdown(),
+			gfmStrikethroughFromMarkdown()
+		]
 	})
 	return mdast
 }
@@ -35,7 +42,23 @@ export const stringifyMdastToMarkdown = (mdast: MdastNodes) => {
 			// adjacent formatting (e.g. text('*') + strong('bold') -> ***bold***)
 			text: (node, _, state, info) => {
 				return node.value
-			}
+			},
+			// Override delete handler to use single ~ instead of ~~
+			// Note: Full handler required because gfmToMarkdown() doesn't provide
+			// a configuration option for the delimiter (it hardcodes ~~)
+			delete: ((node: Delete, _, state, info) => {
+				const tracker = state.createTracker(info)
+				const exit = state.enter('strikethrough')
+				let value = tracker.move('~')
+				value += state.containerPhrasing(node, {
+					...tracker.current(),
+					before: value,
+					after: '~'
+				})
+				value += tracker.move('~')
+				exit()
+				return value
+			}) as Handle
 		}
 	})
 }

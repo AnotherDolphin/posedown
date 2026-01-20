@@ -273,6 +273,29 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 		await expect(focusMarks.last()).toContainText('**');
 	});
 
+	test('should show single tilde for strikethrough/delete elements', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Create strikethrough text with single tilde
+		await editor.pressSequentially('~text~');
+		await page.waitForTimeout(100);
+
+		const del = editor.locator('del');
+		await expect(del).toBeVisible();
+
+		// 2. Click to show marks
+		await del.click();
+		await page.waitForTimeout(50);
+
+		// 3. Should show single ~ (not ~~) for del element
+		const focusMarks = editor.locator('.pd-focus-mark');
+		await expect(focusMarks).toHaveCount(2);
+		await expect(focusMarks.first()).toContainText('~');
+		await expect(focusMarks.first()).not.toContainText('~~');
+		await expect(focusMarks.last()).toContainText('~');
+		await expect(focusMarks.last()).not.toContainText('~~');
+	});
+
 	test('should transition marks when navigating between nested elements', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 

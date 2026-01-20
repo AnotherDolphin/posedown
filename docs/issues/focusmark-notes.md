@@ -13,8 +13,10 @@
   > fixed by extracting spans before transformation and reinjecting after
 - **MAJOR** issue#10: adding same delimiters in the middle doesn't break and match the first half (+test)
   > also, typing a rogue delimiter like "**bold`*|` and *italic***" causes unexpected commonmark spec [behavior](./commonmark-breaking-spec.md)
-- issue#11: deleting into a non-pattern (~~ => ~) doesn't mirror 1 nor 2 backspaces
-  > todo: make the default <del> a single ~ not ~~ in our pipeline
+- issue#11: deleting into a non-pattern (~~ => ~) doesn't mirror 1 nor 2 backspaces ⏳
+  > todo: make the default <del> a single ~ not ~~ in our pipeline ✅
+  > deleting one char from multi-char delimiter spans (like ~~) creates invalid pattern causing spans to disconnect before
+   mirroring, leaving orphaned delimiter chars requiring manual deletion
   > onInput system needs normal overall pattern checks even if nothing in the activeInline prompts update
 - Issue#9: spans don't unwrap as simple text when delimiters become invalid (+test)
 - issue#7: typing delimiters (like * => **) doesn't update format if the caret was right after/before the opening/closing delimter. This is an issue of being typed inside vs right beside a span ⏳
