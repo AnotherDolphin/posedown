@@ -1,10 +1,10 @@
 import {
-	smartReplaceChildren,
 	setCaretAtEnd,
 	getMainParentBlock,
 	findFirstMarkdownMatch,
 	isBlockPattern
 } from '../utils'
+import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS } from '../utils/focus-mark-manager'
 import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
 
@@ -56,6 +56,8 @@ export const findAndTransform = (
 
 	// Parse back to DOM
 	const { fragment, isInline } = markdownToDomFragment(contentInMd)
+	if (isOnlyWhiteSpaceDifference(block, fragment)) return false
+	
 	const lastNodeInFragment = fragment.lastChild
 	if (!fragment || !lastNodeInFragment) return false
 
@@ -69,4 +71,26 @@ export const findAndTransform = (
 	}
 
 	return true
+}
+
+const isOnlyWhiteSpaceDifference = (element: Node, fragment: Node | DocumentFragment) => {
+	const oldContent = element instanceof HTMLElement ? element.innerHTML : element.textContent
+	// Extract content from fragment
+	let newContent: string | null
+	if (fragment instanceof DocumentFragment) {
+		const tempDiv = document.createElement('div')
+		tempDiv.appendChild(fragment.cloneNode(true))
+		newContent = tempDiv.innerHTML
+	} else if (fragment instanceof HTMLElement) {
+		newContent = fragment.innerHTML
+	} else {
+		newContent = fragment.textContent
+	}
+
+	// Compare after normalizing whitespace
+	const normalizeWhitespace = (str: string | null) => {
+		return str?.replace(/\s+/g, ' ').trim() || ''
+	}
+
+	return normalizeWhitespace(oldContent) === normalizeWhitespace(newContent)
 }

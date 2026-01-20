@@ -21,13 +21,12 @@ import {
 	handleBackspaceKey,
 	handleTabKey,
 	handleShiftTabKey,
-	getRangeFromBlockOffsets,
 	hasSemanticTags,
 	processMarkdownInTextNodes,
-	smartReplaceChildren,
 	endsWithValidDelimiter,
 	isEditorEmpty
 } from '../core/utils/dom'
+import { smartReplaceChildren } from '../core/dom'
 import {
 	setCaretAtEnd,
 	setCaretAfterExit,
@@ -59,12 +58,12 @@ export class RichEditorState {
 		this.html = markdownToHtml(markdown)
 
 		// Debug: Track marks state changes
-		$inspect(this.marks).with((type, marks) => {
-			console.log(`[MARKS ${type.toUpperCase()}]`, marks)
-			if (marks && marks.length > 0) {
-				console.log('  Elements:', marks.map(m => m.nodeName).join(' > '))
-			}
-		})
+		// $inspect(this.marks).with((type, marks) => {
+		// 	console.log(`[MARKS ${type.toUpperCase()}]`, marks)
+		// 	if (marks && marks.length > 0) {
+		// 		console.log('  Elements:', marks.map(m => m.nodeName).join(' > '))
+		// 	}
+		// })
 
 		$effect(() => {
 			if (!this.editableRef) return
@@ -244,7 +243,7 @@ export class RichEditorState {
 			// Build full block fragment with formattedElement replaced
 			const parentBlock = formattedElement.parentElement!
 			const newBlockFragment = document.createDocumentFragment()
-			parentBlock.childNodes.forEach(child => {
+			parentBlock.childNodes.forEach(child => { // issue#343: Cannot read properties of null (reading 'childNodes')
 				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
 				else newBlockFragment.append(child.cloneNode(true))
 			})
@@ -253,6 +252,9 @@ export class RichEditorState {
 			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 			smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
 			this.history.push(this.editableRef)
+			// issue#67: (fix) onSelectionChange doesn't trigger if caret before openning marks then press del (adjacent)
+			// so the next line is needed
+			this.focusMarkManager.update(selection, this.editableRef)
 
 			// if newBlockFragment doesn't have <spans> and only flat text with md delimiters, we can let NORMAL FLOW handle it
 			return
@@ -261,6 +263,7 @@ export class RichEditorState {
 		// ==================== HANDLE PATTERNS INSIDE AN ACTIVE INLINE ELM ================
 		if (formattedElement && formattedElement.contains(selection.anchorNode)) {
 			// Extract focus spans (remove from DOM but keep references)
+			// todo: optimize by using a clone (so we don't need to remove spans just to check pattern)
 			const [startSpan, endSpan] = this.focusMarkManager.inlineSpanRefs
 			startSpan?.remove()
 			endSpan?.remove()
@@ -441,8 +444,7 @@ export class RichEditorState {
 			outermostElBeforeCaret.remove()
 		}
 
-		// setCaretAfter(textNode, selection) // issue#5 fails sometimes for new patterns inside activeElement
-		setCaretAtEnd(textNode, selection) // fix#5
+		setCaretAtEnd(textNode, selection)
 
 		this.onInput(e) // trigger input handler to save state and handle md patterns
 		this.marks = null
