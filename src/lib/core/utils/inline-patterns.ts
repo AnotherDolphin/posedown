@@ -77,6 +77,7 @@ const patterns = {
 } as const
 
 // Delimiter mapping for each pattern
+// todo: OUTDATED update this
 const delimiters: Record<keyof typeof patterns, string> = {
 	bold: '**',
 	italic: '*',
@@ -98,9 +99,9 @@ export const SUPPORTED_INLINE_DELIMITERS = new Set([
 	'_',
 	'__',
 	'~~',
-	'`'
+	'`',
+	'~',
 	// '==',
-	// '~',
 	// '^'
 ])
 

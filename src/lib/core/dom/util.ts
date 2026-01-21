@@ -1,3 +1,5 @@
+import { htmlToMarkdown, markdownToDomFragment } from '../transforms/ast-utils'
+
 export const getFirstTextNode = (node: Node): Text | null => {
 	if (node.nodeType === Node.TEXT_NODE) return node as Text
 	for (let i = 0; i < node.childNodes.length; i++) {
@@ -63,4 +65,47 @@ export const getDomRangeFromContentOffsets = (
 	if (!endFound) range.setEnd(element, element.childNodes.length)
 
 	return range
+}
+
+/**
+ * Unwraps a formatted element into a document fragment containing its content.
+ * Preserves nested formatting by converting to markdown and back.
+ *
+ * @param formattedElement - The formatted element to unwrap (e.g., <em>, <strong>)
+ * @returns A DocumentFragment containing the unwrapped content
+ *
+ * Example: <strong>bold <em>and italic</em></strong>
+ * Returns fragment with: "**bold *and italic***" → parsed back to nodes
+ */
+export const unwrapFormattedElement = (formattedElement: HTMLElement): DocumentFragment | Node => {
+	const clone = formattedElement.cloneNode(true) as HTMLElement
+	clone.normalize()
+	const md = htmlToMarkdown(clone.innerHTML)
+	const { fragment } = markdownToDomFragment(md)
+	return fragment
+}
+
+/**
+ * Builds a new block fragment where a specific child element is replaced with new content.
+ * Clones all siblings while replacing the target element with the provided fragment.
+ *
+ * @param parentBlock - The parent block element
+ * @param elementToReplace - The child element to replace
+ * @param replacementFragment - Fragment containing replacement nodes
+ * @returns DocumentFragment with all children (target replaced)
+ */
+export const buildBlockFragmentWithReplacement = (
+	parentBlock: HTMLElement,
+	elementToReplace: Node,
+	replacementFragment: DocumentFragment | Node
+): DocumentFragment => {
+	const newBlockFragment = document.createDocumentFragment()
+	parentBlock.childNodes.forEach(child => {
+		if (child === elementToReplace) {
+			newBlockFragment.append(...replacementFragment.childNodes)
+		} else {
+			newBlockFragment.append(child.cloneNode(true))
+		}
+	})
+	return newBlockFragment
 }

@@ -6,10 +6,7 @@ import {
 	htmlBlockToMarkdown,
 	domFragmentToMarkdown
 } from '$lib/core/transforms/ast-utils'
-import {
-	findFirstMarkdownMatch,
-	SUPPORTED_INLINE_DELIMITERS
-} from '$lib/core/utils/inline-patterns'
+import { findFirstMarkdownMatch } from '$lib/core/utils/inline-patterns'
 import { isBlockPattern, isListPattern } from '$lib/core/utils/block-patterns'
 import {
 	preserveOneChild,
@@ -200,75 +197,30 @@ export class RichEditorState {
 		// ALSO, sometimes activeInline.contains(selection.anchorNode) is false if editing spans at edges
 
 		// =========================== SPAN MIRRORING ===========================
-		const spans = this.focusMarkManager.inlineSpanRefs
-		const spanDisconnected = spans.some(span => !span.isConnected)
-		const spanModified = spans.some(
-			span => span.textContent !== this.focusMarkManager.activeDelimiter
-		)
+		const { spanModified, spanDisconnected } = this.focusMarkManager.handleSpanChanges()
 
-		if (spanDisconnected) {
-			spans.forEach(span => span.remove())
-			// to be handled in focusMarkManager with other side effects
-			this.focusMarkManager.activeDelimiter = ''
-		}
-		// 2. if one is edited, mirror to the other
-		else if (spanModified) {
-			const editedSpan = spans.find(
-				span => span.textContent !== this.focusMarkManager.activeDelimiter
-			)
-			const mirrorSpan = spans.find(span => span !== editedSpan)
-			// todo: normaize both spans if invalid delimiters => update: use onBeforeInput to prevent invalid delimiters
-
-			if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
-				mirrorSpan.textContent = editedSpan.textContent
-				this.focusMarkManager.activeDelimiter = editedSpan.textContent || ''
-			}
-		}
-		// else {
-		// 	return // no changes to spans detected, but this should still trigger the NORMAL FLOW below?
-		// }
-
-		// the next code is only needed when spand edited and not removed?
 		const formattedElement = this.focusMarkManager.activeInline
 
-		// =========================== LIVE SPAND EDIT HANDLING (UPDATING/DEFORMATTING) ===========================
+		// =========================== LIVE SPAN EDIT HANDLING (UPDATING/DEFORMATTING) ===========================
 		if (formattedElement && (spanModified || spanDisconnected)) {
-			// 1. unwrap content within formattedElement (de-transform)
-			const cleanClone = formattedElement.cloneNode(true) as HTMLElement
-			cleanClone.normalize() // Merge fragmented text nodes
-			// 1.2 convert insides to md to preserve nested tags unrelated to current focus mark
-			const md = htmlToMarkdown(cleanClone.innerHTML)
-			const { fragment } = markdownToDomFragment(md)
-
-			// Build full block fragment with formattedElement replaced
-			const parentBlock = formattedElement.parentElement!
-			const newBlockFragment = document.createDocumentFragment()
-			parentBlock.childNodes.forEach(child => { // issue#343: Cannot read properties of null (reading 'childNodes')
-				if (child === formattedElement) newBlockFragment.append(...fragment.childNodes)
-				else newBlockFragment.append(child.cloneNode(true))
-			})
-
-			// 1.4 replace the formatted element with the fragment (unwrap) and let smartReplaceChildren handle caret
-			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
-			smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
+			this.focusMarkManager.unwrapAndReparse(selection)
 			this.history.push(this.editableRef)
-			// issue#67: (fix) onSelectionChange doesn't trigger if caret before openning marks then press del (adjacent)
-			// so the next line is needed
-			this.focusMarkManager.update(selection, this.editableRef)
-
-			// if newBlockFragment doesn't have <spans> and only flat text with md delimiters, we can let NORMAL FLOW handle it
 			return
 		}
 
 		// ==================== HANDLE PATTERNS INSIDE AN ACTIVE INLINE ELM ================
+		// todo: add a conditon to check if input is a delimiter (using anchorNode.includes any SUPPORTED_INLIINE)
 		if (formattedElement && formattedElement.contains(selection.anchorNode)) {
+
 			// Extract focus spans (remove from DOM but keep references)
-			// todo: optimize by using a clone (so we don't need to remove spans just to check pattern)
+			// maydo: optimize by using a clone (so we don't need to remove spans just to check pattern)
 			const [startSpan, endSpan] = this.focusMarkManager.inlineSpanRefs
 			startSpan?.remove()
 			endSpan?.remove()
 
-			const hasInlinePattern = findFirstMarkdownMatch(formattedElement.textContent || '')
+			const innerText = formattedElement.textContent || ''
+
+			const hasInlinePattern = findFirstMarkdownMatch(innerText)
 			if (hasInlinePattern) {
 				const contentInMd = htmlBlockToMarkdown(formattedElement)
 				const { fragment } = markdownToDomFragment(contentInMd)
@@ -282,17 +234,21 @@ export class RichEditorState {
 				this.history.push(this.editableRef)
 				return
 			}
+
 			// No pattern found - put spans back
 			if (startSpan) formattedElement.prepend(startSpan)
 			if (endSpan) formattedElement.append(endSpan)
-		}
 
-		// =========================== ACTIVEINLINE BREAKING EDITS ===========================
-		// if activeInline recieved edit that breaks its previous pattern length
-		// (adding text in the middle that is == activeDelimiter)
-		// e.g. **bold** => **bo**ld**
-		// then match a new pattern where the old closing delimiter is now just text
-		// and the new closing focus mark is at the closest valid activeDelimiter to the first span
+			// ISSUE#10: Breaking delimiter detection
+			// If user typed the activeDelimiter inside the content, unwrap and re-parse
+			// e.g. **bold** => user types * => **bo*ld** => should become **bo*ld** (unwrapped, re-parsed)
+			const hasBreakingDelimiter = this.focusMarkManager.activeDelimiter && innerText.includes(this.focusMarkManager.activeDelimiter)
+			if (hasBreakingDelimiter) {
+				this.focusMarkManager.unwrapAndReparse(selection)
+				this.history.push(this.editableRef)
+				return
+			}
+		}
 
 		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
 
@@ -489,6 +445,7 @@ export class RichEditorState {
 	// ==================================================
 
 	private onBlur = () => {
+		// todo: remove focusmaraks
 		if (this.isDirty) this.syncToTrees()
 	}
 

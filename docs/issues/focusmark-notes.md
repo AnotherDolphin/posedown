@@ -13,7 +13,7 @@
   > fixed by extracting spans before transformation and reinjecting after
 - **MAJOR** issue#10: adding same delimiters in the middle doesn't break and match the first half (+test)
   > also, typing a rogue delimiter like "**bold`*|` and *italic***" causes unexpected commonmark spec [behavior](./commonmark-breaking-spec.md)
-- issue#11: deleting into a non-pattern (~~ => ~) doesn't mirror 1 nor 2 backspaces ⏳
+- ~~issue#11: deleting into a non-pattern (\~~ => ~) doesn't mirror 1 nor 2 backspaces ⏳~~
   > todo: make the default <del> a single ~ not ~~ in our pipeline ✅
   > deleting one char from multi-char delimiter spans (like ~~) creates invalid pattern causing spans to disconnect before
    mirroring, leaving orphaned delimiter chars requiring manual deletion
@@ -31,6 +31,10 @@
 - must hide and override default LI html marker; bad UX when md FocusMarks delimiter is also displayed
 - unaddressed: nesting identical tags unintentionally (makes nested stronger tags bolder)
 - auto insert closing inline delimeters to the end of the current sentence/block until the user closes them
+- escape support with backslash e.g. `\*not italic*` (possible hide/show like focus marks)
 
 ## Tests
 see [focusmark-test-results](./focusmark-test-results.md)
+
+## General
+[this](/docs/issues/mixed-delimeters.md) issue works in paste but NOT in regular typing

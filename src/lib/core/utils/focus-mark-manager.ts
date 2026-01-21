@@ -8,6 +8,8 @@ import {
 } from './dom'
 import { isBlockTagName } from './block-marks'
 import { findAndTransform } from '../transforms/transform'
+import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
+import { smartReplaceChildren, unwrapFormattedElement, buildBlockFragmentWithReplacement } from '../dom'
 
 /**
  * Class name for injected mark spans
@@ -336,71 +338,6 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Public method called when user edits a focus mark span.
-	 * Mirrors the edit to the corresponding span (opening ↔ closing), then unwraps.
-	 * Called from richEditorState.svelte.ts onInput when e.target is a focus mark span.
-	 * @deprecated
-	 */
-	public handleSpanEdit(span: HTMLElement, selection: Selection): void {
-		// Find the formatted element (parent of span)
-		const formattedElement = span.parentElement
-		if (!formattedElement || !INLINE_FORMATTED_TAGS.includes(formattedElement.tagName as any)) {
-			return
-		}
-
-		// Mirror edits: sync opening ↔ closing spans
-		// Inline elements have 2 spans (opening + closing), block elements have 1 span (prefix only)
-		const spans = this.getSpans(formattedElement)
-		if (spans.length === 2) {
-			const openingSpan = spans[0]
-			const closingSpan = spans[1]
-
-			// Determine which span was edited and sync the other
-			if (span === openingSpan) {
-				// User edited opening span → update closing span to match
-				closingSpan.textContent = openingSpan.textContent
-			} else if (span === closingSpan) {
-				// User edited closing span → update opening span to match
-				openingSpan.textContent = closingSpan.textContent
-			}
-		}
-
-		// Calculate cursor offset before unwrapping
-		const cursorOffset = this.calculateCursorOffset(formattedElement, selection)
-
-		// Unwrap: Extract all text (including edited delimiter) and replace with plain text node
-		const fullText = formattedElement.textContent || ''
-		const textNode = document.createTextNode(fullText)
-		formattedElement.replaceWith(textNode)
-
-		// Trigger pattern detection on unwrapped text
-		if (this.editableRef) {
-			findAndTransform(this.editableRef)
-		}
-		// Restore cursor position in the new text node
-		// this.restoreCursor(textNode, cursorOffset, selection)
-
-		// Clean up our active references (element is gone)
-		if (this.activeInline === formattedElement) {
-			this.activeInline = null
-		}
-	}
-
-	/**
-	 * Calculate cursor offset within formatted element.
-	 * Uses Range API to get character offset from start of element to cursor.
-	 */
-	private calculateCursorOffset(element: HTMLElement, selection: Selection): number {
-		const anchorNode = selection.anchorNode
-		if (!anchorNode || !element.contains(anchorNode)) return 0
-
-		const range = document.createRange()
-		range.setStart(element, 0)
-		range.setEnd(anchorNode, selection.anchorOffset)
-		return range.toString().length
-	}
-
-	/**
 	 * Restore cursor position in text node after unwrapping.
 	 * Ensures offset doesn't exceed text node length.
 	 */
@@ -413,6 +350,61 @@ export class FocusMarkManager {
 		// Clear stale ranges and set new range
 		selection.removeAllRanges()
 		selection.addRange(range)
+	}
+
+	/**
+	 * Unwraps the active inline element and re-parses for new patterns.
+	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
+	 *
+	 * @param selection - Current selection for caret restoration
+	 * @returns true if unwrap was performed, false otherwise
+	 */
+	public unwrapAndReparse(selection: Selection): boolean {
+		const formattedElement = this.activeInline
+		if (!formattedElement) return false
+
+		const parentBlock = formattedElement.parentElement
+		if (!parentBlock) return false
+
+		const fragment = unwrapFormattedElement(formattedElement)
+		const newBlockFragment = buildBlockFragmentWithReplacement(parentBlock, formattedElement, fragment)
+
+		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
+		smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
+
+		// Update focus marks after DOM change
+		if (this.editableRef) {
+			this.update(selection, this.editableRef)
+		}
+
+		return true
+	}
+
+	/**
+	 * Checks for span modifications/disconnections and handles mirroring.
+	 * Detects if spans are disconnected or edited, performs cleanup or mirroring as needed.
+	 *
+	 * @returns Object with spanModified and spanDisconnected flags
+	 */
+	public handleSpanChanges(): { spanModified: boolean; spanDisconnected: boolean } {
+		const spans = this.inlineSpanRefs
+		const spanDisconnected = spans.some(span => !span.isConnected)
+		const spanModified = spans.some(span => span.textContent !== this.activeDelimiter)
+
+		if (spanDisconnected) {
+			spans.forEach(span => span.remove())
+			this.activeDelimiter = ''
+		} else if (spanModified) {
+			const editedSpan = spans.find(span => span.textContent !== this.activeDelimiter)
+			const mirrorSpan = spans.find(span => span !== editedSpan)
+
+			if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
+				mirrorSpan.textContent = editedSpan.textContent
+				this.activeDelimiter = editedSpan.textContent || ''
+			}
+		}
+
+		return { spanModified, spanDisconnected }
 	}
 }
 
