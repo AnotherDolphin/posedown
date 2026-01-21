@@ -9,7 +9,7 @@ import {
 import { isBlockTagName } from './block-marks'
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
-import { smartReplaceChildren, unwrapFormattedElement, buildBlockFragmentWithReplacement } from '../dom'
+import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
 
 /**
  * Class name for injected mark spans
@@ -30,18 +30,11 @@ export class FocusMarkManager {
 	activeBlock: HTMLElement | null = null
 	activeDelimiter: string | null = null
 	inlineSpanRefs: Array<HTMLElement> = []
-	private editableRef: HTMLElement | null = null
+	skipNextFocusMarks = false
+	private editableRef: HTMLElement | null = null // should this be even here
 
 	constructor() {
 		if (typeof window === 'undefined' || !window.document) return // to prevent sudden 500 errors. why?
-	}
-
-	/**
-	 * Get all focus mark spans from an element.
-	 * Always queries the DOM to ensure fresh references.
-	 */
-	private getSpans(element: HTMLElement): HTMLElement[] {
-		return Array.from(element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)) as HTMLElement[]
 	}
 
 	/**
@@ -186,12 +179,32 @@ export class FocusMarkManager {
 	}
 
 	/**
+	 * Manually unfocus/eject marks from all active elements.
+	 * Clears both inline and block focus marks and resets active state.
+	 *
+	 * Useful for programmatically removing focus marks without waiting for selection change.
+	 */
+	unfocus(): void {
+		if (this.activeInline) {
+			this.ejectMarks(this.activeInline)
+			this.activeInline = null
+		}
+
+		if (this.activeBlock) {
+			this.ejectMarks(this.activeBlock)
+			this.activeBlock = null
+		}
+
+		this.activeDelimiter = null
+	}
+
+	/**
 	 * Inject marks for inline formatted elements (bold, italic, code, etc.).
 	 * Creates two spans: opening and closing delimiters.
 	 *
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
-	injectInlineMarks(element: HTMLElement): void {
+	private injectInlineMarks(element: HTMLElement): void {
 		// Skip if already marked
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
@@ -338,21 +351,6 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Restore cursor position in text node after unwrapping.
-	 * Ensures offset doesn't exceed text node length.
-	 */
-	private restoreCursor(textNode: Text, offset: number, selection: Selection): void {
-		const safeOffset = Math.min(offset, textNode.length)
-		// Create fresh range (not attached to old DOM structure)
-		const range = document.createRange()
-		range.setStart(textNode, safeOffset)
-		range.setEnd(textNode, safeOffset)
-		// Clear stale ranges and set new range
-		selection.removeAllRanges()
-		selection.addRange(range)
-	}
-
-	/**
 	 * Unwraps the active inline element and re-parses for new patterns.
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
 	 *
@@ -366,13 +364,16 @@ export class FocusMarkManager {
 		const parentBlock = formattedElement.parentElement
 		if (!parentBlock) return false
 
-		const fragment = unwrapFormattedElement(formattedElement)
-		const newBlockFragment = buildBlockFragmentWithReplacement(parentBlock, formattedElement, fragment)
+		const newElementFrag = reparse(formattedElement, true)
+		const newBlockFrag = buildBlockFragmentWithReplacement(
+			parentBlock,
+			formattedElement,
+			newElementFrag
+		)
 
 		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
-		smartReplaceChildren(parentBlock, newBlockFragment, selection, hasInlinePattern)
+		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
-		// Update focus marks after DOM change
 		if (this.editableRef) {
 			this.update(selection, this.editableRef)
 		}
@@ -380,13 +381,15 @@ export class FocusMarkManager {
 		return true
 	}
 
+	// ============================ EDIT HANDLING ===================================
+
 	/**
-	 * Checks for span modifications/disconnections and handles mirroring.
-	 * Detects if spans are disconnected or edited, performs cleanup or mirroring as needed.
+	 * Check if spans are disconnected or modified, and handle mirroring.
+	 * Syncs delimiter changes between opening and closing spans.
 	 *
-	 * @returns Object with spanModified and spanDisconnected flags
+	 * @returns Status flags indicating if spans were disconnected or modified
 	 */
-	public handleSpanChanges(): { spanModified: boolean; spanDisconnected: boolean } {
+	private checkSpanStatus(): { spanDisconnected: boolean; spanModified: boolean } {
 		const spans = this.inlineSpanRefs
 		const spanDisconnected = spans.some(span => !span.isConnected)
 		const spanModified = spans.some(span => span.textContent !== this.activeDelimiter)
@@ -404,7 +407,116 @@ export class FocusMarkManager {
 			}
 		}
 
-		return { spanModified, spanDisconnected }
+		return { spanDisconnected, spanModified }
+	}
+
+	/**
+	 * Handle markdown patterns typed inside active formatted elements.
+	 * Detects nested patterns, removes spans, reparses, then reinjects spans.
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if patterns were handled, false otherwise
+	 */
+	private handleNestedPatterns(selection: Selection): boolean {
+		if (!this.activeInline) return false
+
+		const hasInlinePattern = findFirstMarkdownMatch(this.getSpanlessClone()?.textContent || '')
+		if (!hasInlinePattern) return false
+
+		const [startSpan, endSpan] = this.inlineSpanRefs
+		// Remove spans to prevent pattern interference
+		startSpan?.remove()
+		endSpan?.remove()
+		const fragment = reparse(this.activeInline) // No unwrapping here, just removing spans
+		smartReplaceChildren(this.activeInline, fragment, selection, hasInlinePattern)
+		// Reinject spans
+		if (startSpan) this.activeInline.prepend(startSpan)
+		if (endSpan) this.activeInline.append(endSpan)
+		// Skip next focusmarks (this triggers onSelectionChange)
+		this.skipNextFocusMarks = true
+
+		return true
+	}
+
+	/**
+	 * Handle breaking delimiter edits (e.g., typing ** in the middle of bold text).
+	 * Detects when typing breaks the pattern and unwraps/reparses the element.
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if breaking change was handled, false otherwise
+	 */
+	private handleBreakingDelimiters(selection: Selection): boolean {
+		if (!this.activeInline) return false
+
+		// If activeInline received edit that breaks its previous pattern length
+		// (adding text in the middle that is == activeDelimiter)
+		// e.g. **bold** => **bo**ld**
+		// then match a new pattern where the old closing delimiter is now just text
+		// and the new closing focus mark is at the closest valid activeDelimiter to the first span
+		const matchWhole = findFirstMarkdownMatch(this.activeInline.textContent || '')
+		const hasBreakingChange = matchWhole && matchWhole.text !== this.activeInline.textContent
+
+		if (!hasBreakingChange) return false
+
+		// Find new best pattern
+		this.unwrapAndReparse(selection)
+		// Unfocus to skip showing marks (like regular typing)
+		this.skipNextFocusMarks = true
+		this.unfocus()
+		// maydo: may redesign to always keep marks shown (unless user types away like obsidian) but move caret to end (for whole system)
+
+		return true
+	}
+
+	/**
+	 * Main handler for active inline elements with focus marks.
+	 * Checks for span modifications, nested patterns, and breaking delimiter edits.
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if any inline handling occurred, false otherwise
+	 */
+	public handleActiveInline(selection: Selection): boolean {
+		if (!this.activeInline) return false
+
+		// Only enter focus mark edit flow if:
+		// 1. A span was modified (delimiter edited), OR
+		// 2. A span was disconnected (deleted), OR
+		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
+		// ALSO, sometimes activeInline.contains(selection.anchorNode) is false if editing spans at edges
+
+		// 1. Check span status and handle mirroring
+		const { spanModified, spanDisconnected } = this.checkSpanStatus()
+
+		// 2. If spans modified/disconnected, unwrap and reparse
+		if (spanModified || spanDisconnected) {
+			this.unwrapAndReparse(selection)
+			this.update(selection, this.editableRef!)
+			return true
+		}
+
+		// 3. Check for patterns inside active element
+		if (!this.activeInline.contains(selection.anchorNode)) return false
+
+		if (this.handleNestedPatterns(selection)) {
+			return true
+		}
+
+		// 4. Check for breaking delimiter edits
+		if (this.handleBreakingDelimiters(selection)) {
+			return true
+		}
+
+		return false
+	}
+
+	/**
+	 * @returns get a clone for activeInline without spans
+	 */
+	getSpanlessClone = () => {
+		if (!this.activeInline) return null
+		const clone = this.activeInline.cloneNode(true) as HTMLElement
+		clone.querySelectorAll(`.${FOCUS_MARK_CLASS}`).forEach(span => span.remove())
+		return clone
 	}
 }
 

@@ -48,7 +48,6 @@ export class RichEditorState {
 	marks: Array<Element | Node> | null = $state(null) // only a state for debugging with $inspect
 	private history = new EditorHistory({ debug: false })
 	private focusMarkManager = new FocusMarkManager()
-	private skipNextFocusMarks = false // Prevents marks from appearing right after transformations
 
 	constructor(markdown: string) {
 		this.rawMd = markdown
@@ -174,7 +173,7 @@ export class RichEditorState {
 		setCaretAtEnd(lastInsertable, selection)
 
 		// Prevent FocusMarks from appearing on just-pasted formatted elements
-		this.skipNextFocusMarks = true
+		this.focusMarkManager.skipNextFocusMarks = true
 
 		// Save state AFTER paste completes
 		if (this.editableRef) {
@@ -188,66 +187,9 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return false
 
-		// neutralize inline (two sided) focus mark to refelct (live) edits
-
-		// Only enter focus mark edit flow if:
-		// 1. A span was modified (delimiter edited), OR
-		// 2. A span was disconnected (deleted), OR
-		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
-		// ALSO, sometimes activeInline.contains(selection.anchorNode) is false if editing spans at edges
-
-		// =========================== SPAN MIRRORING ===========================
-		const { spanModified, spanDisconnected } = this.focusMarkManager.handleSpanChanges()
-
-		const formattedElement = this.focusMarkManager.activeInline
-
-		// =========================== LIVE SPAN EDIT HANDLING (UPDATING/DEFORMATTING) ===========================
-		if (formattedElement && (spanModified || spanDisconnected)) {
-			this.focusMarkManager.unwrapAndReparse(selection)
+		if (this.focusMarkManager.handleActiveInline(selection)) {
 			this.history.push(this.editableRef)
 			return
-		}
-
-		// ==================== HANDLE PATTERNS INSIDE AN ACTIVE INLINE ELM ================
-		// todo: add a conditon to check if input is a delimiter (using anchorNode.includes any SUPPORTED_INLIINE)
-		if (formattedElement && formattedElement.contains(selection.anchorNode)) {
-
-			// Extract focus spans (remove from DOM but keep references)
-			// maydo: optimize by using a clone (so we don't need to remove spans just to check pattern)
-			const [startSpan, endSpan] = this.focusMarkManager.inlineSpanRefs
-			startSpan?.remove()
-			endSpan?.remove()
-
-			const innerText = formattedElement.textContent || ''
-
-			const hasInlinePattern = findFirstMarkdownMatch(innerText)
-			if (hasInlinePattern) {
-				const contentInMd = htmlBlockToMarkdown(formattedElement)
-				const { fragment } = markdownToDomFragment(contentInMd)
-				smartReplaceChildren(formattedElement, fragment, selection, hasInlinePattern)
-
-				// Reinject extracted spans
-				if (startSpan) formattedElement.prepend(startSpan)
-				if (endSpan) formattedElement.append(endSpan)
-
-				this.skipNextFocusMarks = true
-				this.history.push(this.editableRef)
-				return
-			}
-
-			// No pattern found - put spans back
-			if (startSpan) formattedElement.prepend(startSpan)
-			if (endSpan) formattedElement.append(endSpan)
-
-			// ISSUE#10: Breaking delimiter detection
-			// If user typed the activeDelimiter inside the content, unwrap and re-parse
-			// e.g. **bold** => user types * => **bo*ld** => should become **bo*ld** (unwrapped, re-parsed)
-			const hasBreakingDelimiter = this.focusMarkManager.activeDelimiter && innerText.includes(this.focusMarkManager.activeDelimiter)
-			if (hasBreakingDelimiter) {
-				this.focusMarkManager.unwrapAndReparse(selection)
-				this.history.push(this.editableRef)
-				return
-			}
 		}
 
 		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
@@ -256,7 +198,7 @@ export class RichEditorState {
 		if (findAndTransform(this.editableRef)) {
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
-			this.skipNextFocusMarks = true
+			this.focusMarkManager.skipNextFocusMarks = true
 			this.history.push(this.editableRef)
 			return
 		}
@@ -297,14 +239,14 @@ export class RichEditorState {
 			e.preventDefault()
 			this.history.breakCoalescing(this.editableRef)
 			this.history.undo(this.editableRef)
-			this.skipNextFocusMarks = true // Don't show marks on restored content
+			this.focusMarkManager.skipNextFocusMarks = true // Don't show marks on restored content
 			this.isDirty = true
 			return
 		}
 		if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
 			e.preventDefault()
 			this.history.redo(this.editableRef)
-			this.skipNextFocusMarks = true // Don't show marks on restored content
+			this.focusMarkManager.skipNextFocusMarks = true // Don't show marks on restored content
 			this.isDirty = true
 			return
 		}
@@ -415,8 +357,8 @@ export class RichEditorState {
 		// ===== FocusMarks: Show markdown delimiters when cursor enters formatted elements =====
 		// This injects/ejects .pd-focus-mark spans dynamically based on cursor position
 		// Skip if this selection change was triggered by a transformation (not user navigation)
-		if (this.skipNextFocusMarks) {
-			this.skipNextFocusMarks = false
+		if (this.focusMarkManager.skipNextFocusMarks) {
+			this.focusMarkManager.skipNextFocusMarks = false
 		} else {
 			this.focusMarkManager.update(selection, this.editableRef)
 		}
@@ -445,7 +387,7 @@ export class RichEditorState {
 	// ==================================================
 
 	private onBlur = () => {
-		// todo: remove focusmaraks
+    this.focusMarkManager.unfocus()
 		if (this.isDirty) this.syncToTrees()
 	}
 
