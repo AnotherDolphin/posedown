@@ -333,7 +333,7 @@ return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS)
 // ❌ First text node is "Hello " (length 6) - offset 18 exceeds length
 ```
 
-**Solution:** `getRangeFromBlockOffsets()` (dom.ts:496-526)
+**Solution:** `getDomRangeFromContentOffsets()` (src/lib/core/dom/util.ts)
 
 **How it works:**
 1. Takes global character offset from block start (18 in example)
@@ -343,18 +343,27 @@ return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS)
 5. Calculates local offset within that text node
 6. Returns Range pointing to correct position
 
-**Implementation in smartReplaceChildren() (dom.ts:654):**
+**Implementation in smartReplaceChildren() (src/lib/core/dom/smartReplaceChildren.ts):**
 ```typescript
-const range = getRangeFromBlockOffsets(newNode, 0, anchorOffset)
+const range = getDomRangeFromContentOffsets(newNode, offsetToCaret)
 selection.removeAllRanges()
-selection.collapse(range.endContainer, range.endOffset)
+selection.addRange(range)
 ```
+
+**Recent Improvements (2026-01-20):**
+- **Refactored into dedicated module**: `smartReplaceChildren` moved from `dom.ts` to its own file `src/lib/core/dom/smartReplaceChildren.ts` (149 lines)
+- **Enhanced utilities**: New helper functions in `src/lib/core/dom/util.ts`:
+  - `getFirstTextNode()` - Finds first text node in a tree
+  - `getDomRangeFromContentOffsets()` - Creates DOM ranges from character offsets
+- **Improved delimiter offset handling**: Automatically adjusts cursor position when pattern delimiters are removed during transformation
+- **Better fallback**: Uses `setCaretAtEnd()` when precise restoration fails
 
 **Why this approach works:**
 - ✅ Decouples string offsets from DOM structure
 - ✅ Handles arbitrary nesting levels
 - ✅ Works for both inline and block transformations
 - ✅ Preserves cursor position accurately (no jumps or drift)
+- ✅ Accounts for removed delimiter characters in pattern transformations
 
 **Used in:**
 - `smartReplaceChildren()` - inline pattern transformations
@@ -667,31 +676,43 @@ console.log('[FocusMarks] Extracted:', { start, end, markdown, text })
 
 ---
 
-**Last Updated:** 2026-01-11
-**Feature Status:** ⏳ Core inline features partially working, significant cursor positioning issues, see `focusMarks-status.md` for current state
+**Last Updated:** 2026-01-20
+**Feature Status:** ⏳ Core inline features working with recent improvements, some cursor positioning issues remain, see `focusMarks-status.md` for current state
+
 **Code Locations:**
 - `src/lib/core/utils/focus-mark-manager.ts` - Core FocusMarkManager class (partially disabled)
 - `src/lib/svelte/richEditorState.svelte.ts` - Integration and event handling (contains most logic now)
-- `src/lib/core/utils/dom.ts` - Helper functions (getFirstOfAncestors, getRangeFromBlockOffsets)
+- `src/lib/core/dom/smartReplaceChildren.ts` - Smart DOM reconciliation with cursor preservation (refactored 2026-01-20)
+- `src/lib/core/dom/util.ts` - DOM utility functions (getFirstTextNode, getDomRangeFromContentOffsets)
+- `src/lib/core/utils/dom.ts` - Helper functions (getFirstOfAncestors, INLINE_FORMATTED_TAGS, BLOCK_FORMATTED_TAGS)
 - `src/lib/svelte/RichEditor.svelte` - CSS styling
+
+**Recent Fixes (2026-01-20):**
+- ✅ **Issue #67**: Fixed delete before focus marks deleting all marks instead of just one
+  - Solution: Added `focusMarkManager.update()` call after unwrapping to ensure marks are refreshed correctly
+- ✅ **Space input in formatted text**: Fixed space not working in formatted elements
+- ✅ **Code organization**: Refactored `smartReplaceChildren` into dedicated module with enhanced utilities
+- ✅ **Test suite**: Reorganized 721-line monolithic test file into 9 focused, categorized test files
 
 **What Works:**
 - Inline mark injection/ejection (bold, italic, code, strikethrough, del)
 - Block mark injection for headings, blockquotes, list items
 - Span mirroring during editing
 - skipNextFocusMarks flag prevents marks on just-transformed content
-- Edge detection for adjacent formatted elements (unreliable)
+- Edge detection for adjacent formatted elements (improved but still needs work)
+- Delete/backspace before focus marks (issue #67 fixed)
+- Unified offsetToCaret logic for consistent caret tracking
 
-**What's Broken:**
-- Cursor positioning after span edits (critical issue)
-- Inconsistent backspace/delete behavior in spans
-- Edge detection doesn't always work
+**What's Partially Working:**
+- Cursor positioning after span edits (improved with smartReplaceChildren refactor, but edge cases remain)
+- Edge detection (implemented but unreliable in some scenarios)
 
 **What Doesn't Work Yet:**
 - Block mark editing (changing heading levels, unwrapping blocks)
 - Multi-line code blocks
-- List item focus behavior
+- List item focus behavior (should focus end not span)
 - Hide default LI HTML markers
+- Issue #10: Breaking delimiters (typing delimiter in middle of formatted text)
 
 **⚠️ Implementation Note:**
 The current implementation temporarily places span editing logic in `richEditorState.svelte.ts` onInput handler (instead of `FocusMarkManager.handleSpanEdit()`) as a development strategy to address MutationObserver timing issues. This allows for rapid iteration and testing. Once the behavior is stable and working correctly, the logic will be refactored back into `focus-mark-manager.ts` to maintain clean architecture and encapsulation. See `docs/issues/focusMarks-status.md` for detailed current status and issues.

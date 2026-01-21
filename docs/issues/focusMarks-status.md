@@ -1,13 +1,20 @@
 # FocusMarks Feature - Current Status
 
-**Last Updated:** 2026-01-12
-**Session Focus:** issue#34 fix (nested element prioritization) and code refactoring
+**Last Updated:** 2026-01-20
+**Session Focus:** Merged PR #1 with bug fixes, test refactoring, and caret handling improvements
 
 ---
 
 ## Executive Summary
 
-FocusMarks is **partially functional** with the core inline features working but significant issues remain around cursor positioning and consistent behavior during span editing.
+FocusMarks is **partially functional** with the core inline features working and several critical bugs fixed. Recent improvements have addressed major issues, but some edge cases remain.
+
+**Recent Fixes (2026-01-20 - PR #1):**
+- ✅ **Issue #67 FIXED**: Delete before focus marks now correctly deletes only one mark instead of all marks
+- ✅ **Space input FIXED**: Space now works correctly in formatted text
+- ✅ **Code organization**: `smartReplaceChildren` refactored into dedicated module with enhanced utilities
+- ✅ **Test suite**: Reorganized 721-line test file into 9 focused categories (80 tests total, 53 passing)
+- ✅ **Improved caret handling**: Unified offsetToCaret logic for consistent caret tracking
 
 **What's Working:**
 - ✅ Basic inline mark injection/ejection (bold, italic, code, etc.)
@@ -15,12 +22,16 @@ FocusMarks is **partially functional** with the core inline features working but
 - ✅ Real-time unwrapping and transformation
 - ✅ Skip marks on newly typed formatted elements
 - ✅ Edge detection for cursor adjacent to formatted elements
-- ✅ **NEW:** issue#34 - Activates focusMarks when cursor directly before/after formatted elements in adjacent nodes
+- ✅ issue#34 - Activates focusMarks when cursor directly before/after formatted elements in adjacent nodes
+- ✅ **Delete/backspace before focus marks (issue #67)**
+
+**What's Partially Working:**
+- ⏳ Cursor positioning after span edits (improved, but edge cases remain)
+- ⏳ Edge detection (implemented but unreliable in some scenarios)
 
 **What's Broken:**
-- ❌ Cursor positioning after span edits (jumps to wrong location)
-- ❌ Backspace behavior at delimiter boundaries (sometimes removes both delimiters)
-- ❌ Focus marks don't consistently re-appear after transformations
+- ❌ Issue #10: Breaking delimiters (typing delimiter in middle of formatted text) - tests exist but many failing
+- ❌ Some backspace/delete edge cases still inconsistent
 
 **What's Not Implemented:**
 - ⚠️ Block mark editing (headings, blockquotes, lists)
@@ -243,6 +254,11 @@ Edge detection is more general and doesn't require manual flag management. Howev
 4. **"editing inside spans must not mirror if NEW input && input is not supported md mark"** ✅
    - Working via `SUPPORTED_INLINE_DELIMITERS.has()` check (line 226)
 
+5. **Issue #67: "caret before marks and del deletes all of them if delimiter length > 1"** ✅
+   - **FIXED 2026-01-20**: Added `focusMarkManager.update(selection, editableRef)` after unwrapping (line 257)
+   - Solution ensures marks are properly refreshed when selection doesn't trigger naturally
+   - Fix confirmed working in manual testing
+
 ### ⏳ Partially Working
 
 5. **"focusMarks must show if editing spans causes re-render but caret ends up just before/after"** ⏳
@@ -270,6 +286,13 @@ Edge detection is more general and doesn't require manual flag management. Howev
     - **Intentionally deferred**: Logic temporarily in richEditorState for development
     - Will be refactored back to FocusMarkManager once behavior is stable
     - Current focus: Fix cursor positioning before architectural consolidation
+
+11. **Issue #10: "adding same delimiters in the middle doesn't break and match the first half"** ❌
+    - Implementation planned in `docs/issues/issue10-implementation.md` (marked as outdated)
+    - Tests exist in `tests/e2e/focus-marks/breaking-delimiters.spec.ts`
+    - Many tests failing (expected) - feature not fully implemented
+    - Example: Typing `*` in middle of `*italic*` should break pattern and create new match
+    - Status: In progress, non-blocking for current release
 
 ---
 
@@ -456,13 +479,21 @@ From design: "can't use smartReplace bc we want to UPDATE/EJECT format/pattern A
 - `src/lib/core/utils/focus-mark-manager.ts` (lines 116-188) - Edge detection
 - `src/lib/core/utils/focus-mark-manager.ts` (lines 141-166) - Mark injection
 
+**DOM Utilities (Refactored 2026-01-20):**
+- `src/lib/core/dom/smartReplaceChildren.ts` (149 lines) - Smart DOM reconciliation with cursor preservation
+- `src/lib/core/dom/util.ts` (66 lines) - Helper functions:
+  - `getFirstTextNode()` - Finds first text node in tree
+  - `getDomRangeFromContentOffsets()` - Creates DOM ranges from character offsets
+- `src/lib/core/dom/index.ts` - Module exports
+
 **Unused/Disabled Code:**
 - `focus-mark-manager.ts` lines 33-62 - MutationObserver (disabled)
 - `focus-mark-manager.ts` lines 288-338 - handleSpanEdit() (never called)
 
 **Related Utilities:**
-- `src/lib/core/utils/dom.ts` - Tag lists, getFirstOfAncestors
+- `src/lib/core/utils/dom.ts` - Tag lists, getFirstOfAncestors (smartReplaceChildren moved out)
 - `src/lib/core/utils/inline-patterns.ts` - SUPPORTED_INLINE_DELIMITERS
+- `src/lib/core/transforms/transform.ts` - Pattern detection and transformation logic
 
 ---
 

@@ -5,6 +5,7 @@
 ```
 src/
 ├── core/              # Framework-agnostic (pure TS/JS)
+│   ├── dom/           # DOM utilities (smartReplaceChildren, cursor positioning)
 │   ├── utils/         # Pattern detection, helpers
 │   ├── transforms/    # AST conversions (markdown ↔ HTML)
 │   └── history/       # Undo/redo system
@@ -13,6 +14,26 @@ src/
 │   └── richEditorState.svelte.ts  # State management (uses Svelte 5 runes)
 └── index.ts           # Main exports
 ```
+
+### Core Modules
+
+**`core/dom/`** (added v0.1.0):
+- `smartReplaceChildren.ts` - Intelligent DOM reconciliation with cursor preservation
+- `util.ts` - DOM helper functions (getFirstTextNode, getDomRangeFromContentOffsets)
+- `index.ts` - Module exports
+
+**`core/utils/`**:
+- Pattern detection (inline and block markdown patterns)
+- DOM helpers (getFirstOfAncestors, tag lists)
+- Focus mark manager
+- Selection utilities
+
+**`core/transforms/`**:
+- AST conversions between markdown and HTML
+- Pattern transformation logic
+
+**`core/history/`**:
+- Undo/redo system with intelligent coalescing
 
 ## Current State (v0.1.0)
 
