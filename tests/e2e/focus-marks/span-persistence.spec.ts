@@ -179,6 +179,6 @@ test.describe('Rich Editor - Focus Mark Span Persistence', () => {
 
 		const text = await editor.textContent()
 		// Z should appear right after the closing * we typed
-		expect(text).toContain('*Z')
+		expect(text).toContain('*Z') // bad test: world correctly formats <em>world</em> and so the checked "*" is removed
 	})
 })
