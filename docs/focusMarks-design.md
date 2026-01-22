@@ -1,757 +1,286 @@
-# FocusMarks Feature - Design Documentation
+# FocusMarks - Design Documentation
+
+> **For current implementation status and test results**, see [focusMarks-status.md](./issues/focusMarks-status.md)
 
 ## Overview
 
-FocusMarks is a UX enhancement feature that temporarily reveals markdown syntax delimiters when the cursor enters formatted elements. This provides visual feedback about the underlying markdown structure without permanently cluttering the interface.
+FocusMarks temporarily reveals markdown syntax delimiters when the cursor enters formatted elements.
 
 **Core Behavior:**
-- When cursor enters `<strong>bold</strong>`, shows `**bold**`
-- When cursor enters `<h2>heading</h2>`, shows `## heading`
-- When cursor leaves, the marks disappear
-- Marks are editable - user can change `**` to `*` to transform bold → italic
+- Cursor enters formatted element → delimiters appear
+- Cursor leaves → delimiters disappear
+- Delimiters are editable → user can modify to change formatting
+
+**Examples:**
+- `<strong>bold</strong>` → shows `**bold**`
+- `<em>italic</em>` → shows `*italic*`
+- `<h2>heading</h2>` → shows `## heading`
+- Edit `**` to `*` → transforms bold → italic
 
 ## Architecture
+
+See [focus-mark-manager.ts](../src/lib/core/utils/focus-mark-manager.ts) and [richEditorState.svelte.ts](../src/lib/svelte/richEditorState.svelte.ts)
 
 ### Component Structure
 
 ```
-richEditorState.svelte.ts
-├── focusMarkManager: FocusMarkManager (singleton instance)
-├── skipNextFocusMarks: boolean (flag to suppress marks after transformations)
-├── spanRefs: Array<HTMLElement> (references to injected mark spans for editing detection)
-├── onSelectionChange() → conditionally calls focusMarkManager.update()
-└── onInput() → detects span edits, delegates to focusMarkManager.handleSpanEdit()
+richEditorState.svelte.ts (Integration Layer)
+└── Delegates to FocusMarkManager via:
+    ├── onInput → handleActiveInline()
+    ├── onSelectionChange → update()
+    ├── onBlur → unfocus()
+    └── Sets skipNextFocusMarks flag after transformations
 
-focus-mark-manager.ts
-├── FocusMarkManager class
-│   ├── activeInline: HTMLElement | null (currently focused inline element)
-│   ├── activeBlock: HTMLElement | null (currently focused block element)
-│   ├── spanRefs: Array<HTMLElement> (tracks injected spans)
-│   ├── update() → main entry point, detects transitions and manages injection/ejection
-│   ├── findFocusedInline() → finds inline formatted parent with edge detection (issue#34 fix)
-│   ├── checkTextNodeEdges() → helper: checks if cursor at edge of text node with formatted sibling
-│   ├── findFocusedBlock() → uses getFirstOfAncestors() to find closest block formatted parent
-│   ├── injectInlineMarks() → creates opening/closing mark spans
-│   ├── injectBlockMarks() → creates prefix mark span only
-│   ├── ejectMarks() → removes mark spans and normalizes text nodes
-│   ├── extractDelimiters() → reverse-engineers markdown from HTML element (special LI handling)
-│   ├── handleSpanEdit() → PUBLIC: unwraps formatted element when user edits a mark span
-│   ├── calculateCursorOffset() → gets character offset within element
-│   ├── restoreCursor() → restores cursor position after unwrapping
-│   └── createMarkSpan() → factory for creating styled mark spans
+FocusMarkManager (Core Implementation)
+├── Public API:
+│   ├── update() - Main entry on selection change
+│   ├── handleActiveInline() - Orchestrates span editing
+│   ├── unfocus() - Clear all marks
+│   └── unwrapAndReparse() - Convert element to markdown and reparse
+│
+├── State:
+│   ├── activeInline/activeBlock - Currently focused elements
+│   ├── inlineSpanRefs - Injected span references
+│   ├── activeDelimiter - Current delimiter for mirroring
+│   └── skipNextFocusMarks - Suppress marks after transformations
+│
+└── Internal Methods:
+    ├── checkSpanStatus() - Detect modifications, mirror edits
+    ├── handleNestedPatterns() - Process patterns inside active elements
+    ├── handleBreakingDelimiters() - Handle delimiter typed in middle
+    ├── findFocusedInline/Block() - Find focused elements (with edge detection)
+    ├── inject/ejectMarks() - Mark lifecycle
+    ├── extractDelimiters() - Reverse-engineer markdown delimiters
+    └── getSpanlessClone() - Clone without focus mark spans
 
-dom.ts
-├── INLINE_FORMATTED_TAGS: TagName[] → ['STRONG', 'EM', 'CODE', 'S', 'DEL']
-├── BLOCK_FORMATTED_TAGS: TagName[] → ['H1'-'H6', 'BLOCKQUOTE', 'LI']
-├── isInlineFormattedElement() → type guard for inline formatted elements
-├── getFirstOfAncestors() → walks DOM tree to find first matching parent element
-└── getRangeFromBlockOffsets() → traverses DOM depth-first to find correct cursor position
+DOM Utilities
+├── dom.ts - Tag lists, tree walking, type guards
+├── dom/util.ts - reparse(), getDomRangeFromContentOffsets(), getFirstTextNode()
+└── dom/smartReplaceChildren.ts - Smart DOM reconciliation with cursor preservation
 ```
 
-### Data Flow
+### Data Flows
 
-#### 1. User Navigation (Arrow Keys, Mouse Click)
+#### 1. Navigation (Arrow Keys, Mouse Click)
 ```
 User moves cursor
-  ↓
-onSelectionChange() fires
-  ↓
-Check skipNextFocusMarks flag
-  ↓ (if false)
-focusMarkManager.update(selection, root)
-  ↓
-findFocusedInline() + findFocusedBlock()
-  ↓
-Compare with activeInline/activeBlock
-  ↓ (if different)
-ejectMarks(oldElement) + injectMarks(newElement)
-  ↓
-Update activeInline/activeBlock references
+  → onSelectionChange() fires
+  → Check skipNextFocusMarks flag
+  → focusMarkManager.update(selection, root)
+  → findFocusedInline() + findFocusedBlock()
+  → Compare with activeInline/activeBlock
+  → ejectMarks(old) + injectMarks(new) if changed
 ```
 
-#### 2. User Types Markdown (`**bold**`)
+#### 2. Typing Markdown Pattern
 ```
-User types final *
-  ↓
-onInput() fires
-  ↓
-Strip existing focus marks from block (clone + remove spans)
-  ↓
-Detect pattern match (hasInlinePattern = true)
-  ↓
-Convert block to markdown, parse back to HTML
-  ↓
-Replace DOM with new <strong> element
-  ↓
-Set skipNextFocusMarks = true
-  ↓
-onSelectionChange() fires (browser restores cursor)
-  ↓
-skipNextFocusMarks is true → skip mark injection
-  ↓
-Reset skipNextFocusMarks = false
+User types **bold**
+  → onInput() fires
+  → Pattern detection transforms to <strong>
+  → Set skipNextFocusMarks = true
+  → onSelectionChange() fires
+  → Skips mark injection (flag is true)
+  → Reset skipNextFocusMarks = false
 ```
 
-#### 3. User Edits Mark Span (`**` → `*`)
+#### 3. Editing Mark Span
 ```
 User changes ** to * in focus mark span
-  ↓
-onInput() fires in richEditorState.svelte.ts
-  ↓
-Check if activeInline contains cursor OR spans modified/disconnected
-  ↓ (yes, editing detected)
-Mirror edited span to its pair (if valid delimiter)
-  ↓
-Convert activeInline.innerHTML to markdown (includes span contents)
-  ↓
-Transform markdown back to HTML (fragment)
-  ↓
-Replace activeInline with fragment
-  ↓
-Clear spanRefs, set activeInline = null
-  ↓
-Early return from span edit handler
-  ↓
-Result: markdown in fragment determines outcome
-  - Valid pattern (e.g., "*text*") → transforms to <em>
-  - Invalid pattern (e.g., "*text**") → stays as plain text
+  → onInput() fires
+  → handleActiveInline(selection)
+  → checkSpanStatus() detects modification
+  → Mirrors edit to paired span
+  → unwrapAndReparse() converts to markdown and back
+  → smartReplaceChildren() replaces DOM
+  → Result: <em> if valid, plain text if invalid
 ```
 
-**Note:** Current implementation handles span editing in `richEditorState.svelte.ts` directly, not via `FocusMarkManager.handleSpanEdit()`. See `focusMarks-status.md` for details.
-
-**Real-time transformation example:**
+#### 4. Breaking Delimiter (Issue #10)
 ```
-User completes editing: "*text*"
-  ↓ (pattern detection)
-Pattern match found: *...* (italic)
-  ↓
-Transform to <em>text</em>
-  ↓
-Set skipNextFocusMarks = true
-  ↓
-Result: <em>text</em> (no marks shown until user navigates back)
+User types * in middle of *italic* → *ita*lic*
+  → onInput() fires
+  → handleActiveInline(selection)
+  → handleBreakingDelimiters() detects pattern break
+  → unwrapAndReparse() to markdown
+  → Pattern detection finds: *ita*
+  → Result: <em>ita</em>lic*
 ```
 
 ## Design Decisions
 
-### Decision 1: Dynamic Injection vs. Pre-injected Spans
+### 1. Dynamic Injection vs. Pre-injected Spans
 
-**Chosen:** Dynamic injection (inject on focus, eject on blur)
+**Chosen:** Dynamic injection
 
-**Alternatives considered:**
-1. **Pre-inject hidden spans** - Add `<span style="display:none">**</span>` during HTML generation
-   - ❌ Pollutes DOM with thousands of spans (2 per element)
-   - ❌ Interferes with serialization (must filter everywhere)
-   - ❌ Cursor can accidentally land inside hidden spans
+**Why:**
+- Clean DOM 99% of time (max 4 spans)
+- No serialization interference
+- Derives delimiters via `htmlToMarkdown()`
+- ~0.2-0.4ms per selection change (negligible)
 
-2. **Data attributes** - Store delimiters in `data-pd-mark="**,**"`
-   - ❌ Adds complexity to track and maintain attributes
-   - ❌ Requires modifying transformation pipeline
-   - ❌ Unnecessary since we normalize to default delimiters anyway
+**Alternatives rejected:**
+- Pre-injected hidden spans → pollutes DOM, interferes with serialization
+- Data attributes → unnecessary complexity
 
-3. **Dynamic injection** ✅
-   - ✅ Clean DOM 99% of time (max 4 spans: 1 inline pair + 1 block pair)
-   - ✅ Derives delimiters via reverse-engineering (htmlToMarkdown)
-   - ✅ No transformation pipeline changes
-   - ✅ Acceptable performance (~0.1-0.5ms per selection change)
+### 2. Delimiter Extraction via Reverse Engineering
 
-### Decision 2: Delimiter Extraction Method
+**Method:** Convert element to markdown, split by text content
 
-**Chosen:** Reverse-engineer via `htmlToMarkdown()` + `String.split()`
-
-**How it works:**
 ```typescript
-// Given: <strong>text</strong>
-const temp = document.createElement('STRONG')
-temp.textContent = 'text'
-const markdown = htmlToMarkdown(temp.outerHTML) // "**text**"
-const parts = markdown.split('text') // ["**", "**"]
-return { start: parts[0], end: parts[1] }
+const markdown = htmlToMarkdown(element.outerHTML) // "**text**"
+const parts = markdown.split(textContent) // ["**", "**"]
 ```
 
-**Why this works:**
-- ✅ Normalizes to default syntax (`**` for bold, `*` for italic, etc.)
-- ✅ Works for both inline (opening + closing) and block (prefix only)
-- ✅ Simple implementation (no regex, no complex parsing)
-- ✅ Leverages existing `htmlToMarkdown()` infrastructure
+**Why:** Simple, normalizes to default syntax, leverages existing infrastructure
 
-**Important Design Decision: Delimiter Normalization**
-The system intentionally normalizes all delimiters to their default markdown syntax:
-- `<strong>` → `**` (not `__`)
-- `<em>` → `*` (not `_`)
-- `<ul><li>` → `-` (not `*`)
+**Normalization:** `__bold__` and `**bold**` both show as `**`. Original delimiter not preserved (would require data attributes for minimal benefit).
 
-This is by design for consistency and simplicity. The user's original delimiter choice is not preserved after HTML parsing because `<strong>` elements created from `**bold**` and `__bold__` are identical in the DOM. Rather than tracking original syntax in data attributes, we normalize to standard defaults.
+### 3. Skip Flag for New Transformations
 
-**Edge cases handled:**
-- Text contains delimiter characters: `split()` correctly handles this
-- Empty text: Early return if `textContent.trim() === ''`
-- Delimiter includes whitespace: Preserved as-is (e.g., `"# "` not trimmed)
+**Problem:** After typing `**bold**`, marks immediately reappear (visual noise)
 
-### Decision 3: Skip Flag for New Transformations
+**Solution:** `skipNextFocusMarks` flag suppresses next injection, auto-resets
 
-**Problem:** When user types `**bold**`, the transformation fires, cursor lands in the new `<strong>` element, and `onSelectionChange` immediately injects marks. This creates visual noise.
+**Applied to:** Pattern transformations, paste, undo, redo
 
-**Solution:** `skipNextFocusMarks` flag
+### 4. Span Stripping Before Pattern Detection
 
-**Implementation:**
-```typescript
-// Set flag AFTER transformation completes
-onInput() {
-  if (hasPattern) {
-    transformToHTML()
-    this.skipNextFocusMarks = true
-  }
-}
+**Problem:** Focus mark spans interfere with pattern detection
 
-// Check flag BEFORE injecting marks
-onSelectionChange() {
-  if (this.skipNextFocusMarks) {
-    this.skipNextFocusMarks = false // Reset for next time
-  } else {
-    this.focusMarkManager.update() // Normal injection
-  }
-}
-```
+**Solution:** `getSpanlessClone()` removes `.pd-focus-mark` spans before processing
 
-**Applied to:**
-- Markdown pattern transformations (`onInput` line 234)
-- Paste operations (`onPaste` line 173)
-- Undo operations (line 279)
-- Redo operations (line 286)
+**Why:** Preserves original DOM, cheap operation (clone only)
 
-**Why it works:**
-- Single-use flag prevents one specific selection change
-- Automatically resets after use
-- Browser handles cursor restoration (no manual intervention)
-- Allows marks to appear when user navigates BACK to the element later
+### 5. Editable Marks
 
-### Decision 4: Span Stripping Before Pattern Detection
+**Chosen:** Editable (inherit `contentEditable`)
 
-**Problem:** Focus mark spans can interfere with pattern detection and markdown conversion.
+**Why:**
+- User can modify delimiters to change formatting
+- Can delete delimiters to unwrap
+- Markdown-first philosophy
 
-**Example without stripping:**
-```html
-<strong><span class="pd-focus-mark">**</span>text<span class="pd-focus-mark">**</span></strong>
-```
-When converted to markdown, this might produce `******text****` (delimiter duplication).
+**How:** Span modifications detected by `checkSpanStatus()`, mirrored to pair, then `unwrapAndReparse()`
 
-**Solution:** Clone block, strip marks, normalize, then use clean block for detection
+### 6. Maximum Two Active Marks
 
-**Implementation (richEditorState.svelte.ts:200-204):**
-```typescript
-const cleanBlock = block.cloneNode(true) as HTMLElement
-cleanBlock.querySelectorAll('.pd-focus-mark').forEach(mark => mark.remove())
-cleanBlock.normalize() // Merge fragmented text nodes
-// Use cleanBlock for pattern detection and conversion
-```
+**Constraint:** Show only closest inline + closest block parent
 
-**Why clone first:**
-- ✅ Preserves original DOM (marks still visible to user)
-- ✅ Only affects pattern detection logic
-- ✅ Cheap operation (single block clone, not entire tree)
+**Why:** Reduces clutter, shows most relevant context, matches user mental model
 
-### Decision 5: Editable vs. Non-editable Marks
+**Example:** In `<blockquote><em><strong>text</strong></em></blockquote>`, show `**` (closest inline) and `>` (closest block), not `*`
 
-**Chosen:** Editable (spans inherit `contentEditable` from parent)
+### 7. Single Tilde for Strikethrough
 
-**Rationale:**
-- Allows users to modify delimiters to change formatting
-- Example: Change `**` to `*` to transform bold → italic
-- Enables "unwrap" behavior by deleting delimiters
-- Fits with editor's philosophy of exposing markdown syntax
+**Choice:** Normalize `<del>` to `~text~` (not `~~text~~`)
 
-**Implementation:**
-```typescript
-// Spans inherit contentEditable from parent editor div
-span.className = FOCUS_MARK_CLASS
-span.textContent = text
-// No explicit contentEditable attribute needed
-```
+**Why:** Better span editing UX - single backspace cleanly unwraps. With `~~`, deleting one tilde leaves 3 tildes requiring manual cleanup.
 
-**How unwrapping works:**
-1. User edits mark span (`**` → `*`)
-2. `onInput()` fires, detects cursor inside span (via `spanRefs` array)
-3. Delegates to `focusMarkManager.handleSpanEdit(span, selection)`
-4. `handleSpanEdit()` calculates cursor offset, extracts text, unwraps
-5. Formatted element replaced with plain text node: `"*text**"`
-6. Cursor restored to correct position in text node
-7. Pattern detection continues, sees mismatched delimiters
-8. No pattern match → remains as plain text
-9. If user completes to valid pattern (`"*text*"`), transforms to `<em>` in real-time
+**Implementation:** Custom handler in [ast-utils.ts](../src/lib/core/transforms/ast-utils.ts)
 
-### Decision 6: Maximum Two Marks (One Inline + One Block)
+**Trade-off:** Deviates from GFM spec (but GitHub-compatible)
 
-**Design constraint:** Only show marks for the **closest** inline and **closest** block parent.
+### 8. Cursor Positioning After Transformations
 
-**Example:**
-```html
-<blockquote>
-  <p>
-    <em>
-      <strong>text</strong>  ← cursor here
-    </em>
-  </p>
-</blockquote>
-```
+**Problem:** Text offsets don't map directly to DOM nodes
 
-**Shows:**
-- `**` for `<strong>` (closest inline parent)
-- `>` for `<blockquote>` (closest block parent)
-
-**Does NOT show:**
-- `*` for `<em>` (not the closest, `<strong>` is)
-
-**Rationale:**
-- ✅ Reduces visual clutter
-- ✅ Shows most relevant formatting context
-- ✅ Matches user's mental model (innermost inline + outermost block)
-
-**Implementation:**
-```typescript
-// Only store ONE active inline and ONE active block
-private activeInline: HTMLElement | null = null
-private activeBlock: HTMLElement | null = null
-
-// findFocusedInline/Block() use getFirstOfAncestors helper
-return getFirstOfAncestors(selection.anchorNode, root, INLINE_FORMATTED_TAGS)
-```
-
-### Decision 7: Single Tilde Delimiter for Delete/Strikethrough
-
-**Decision:** Use single tilde (`~`) as the normalized delimiter for `<del>` elements.
-
-**Primary Benefit - Span Editing UX:**
-Single backspace unwraps the `<del>` element cleanly. The deleted `~` mirrors to the other span (both empty), triggering unwrap. With `~~`, deleting one `~` creates invalid pattern `~text~~` - spans disconnect before mirroring, leaving 3 tildes requiring manual deletion.
-
-**Implementation:**
-```typescript
-// ast-utils.ts - Custom delete handler (lines 43-61)
-delete: ((node: Delete, _, state, info) => {
-  const tracker = state.createTracker(info)
-  const exit = state.enter('strikethrough')
-  let value = tracker.move('~')  // Single ~ instead of ~~
-  value += state.containerPhrasing(node, { ...tracker.current(), before: value, after: '~' })
-  value += tracker.move('~')
-  exit()
-  return value
-}) as Handle
-```
-
-**Note:** Full handler required because `gfmToMarkdown()` doesn't provide delimiter configuration option.
-
-**Parsing vs Serialization:**
-- **Input**: Both `~text~` and `~~text~~` create `<del>` elements (gfm supports both by default)
-- **Core/Output**: Always serializes to single `~`
-- **Focus Marks**: Show single `~` when entering `<del>` elements
-
-**Trade-offs:**
-- ✅ Better span editing UX (1 manual deletion vs 3)
-- ✅ Less visual clutter
-- ⚠️ Deviates from official GFM spec (but GitHub-compatible)
-
-**Testing:** See `activation.spec.ts:276-297` and `span-mirroring.spec.ts:429-496`
-
-**Related**: See [inline-patterns-design.md](./design/inline-patterns-design.md#single-tilde-for-strikethrough).
-
-### Decision 8: Cursor Positioning After Transformations
-
-**Problem:** When pattern detection transforms markdown to HTML, cursor position must be preserved. Naive approaches fail because:
-- String-based pattern detection works with plain text offsets
-- DOM structure has nested elements (e.g., `<p>Hello <strong>world</strong>!</p>`)
-- Cannot directly map text offset to specific text node
-
-**Example failure:**
-```typescript
-// User types: "Hello **world**!"
-// Pattern detection: offset 18 (after "!")
-// New DOM: <p>Hello <strong>world</strong>!</p>
-// Naive approach: Get first text node, set offset 18
-// ❌ First text node is "Hello " (length 6) - offset 18 exceeds length
-```
-
-**Solution:** `getDomRangeFromContentOffsets()` (src/lib/core/dom/util.ts)
-
-**How it works:**
-1. Takes global character offset from block start (18 in example)
-2. Traverses new DOM tree depth-first (left-to-right, top-to-bottom)
-3. At each text node, accumulates character count
-4. When cumulative count reaches target offset, identifies correct text node
-5. Calculates local offset within that text node
-6. Returns Range pointing to correct position
-
-**Implementation in smartReplaceChildren() (src/lib/core/dom/smartReplaceChildren.ts):**
-```typescript
-const range = getDomRangeFromContentOffsets(newNode, offsetToCaret)
-selection.removeAllRanges()
-selection.addRange(range)
-```
-
-**Recent Improvements (2026-01-20):**
-- **Refactored into dedicated module**: `smartReplaceChildren` moved from `dom.ts` to its own file `src/lib/core/dom/smartReplaceChildren.ts` (149 lines)
-- **Enhanced utilities**: New helper functions in `src/lib/core/dom/util.ts`:
-  - `getFirstTextNode()` - Finds first text node in a tree
-  - `getDomRangeFromContentOffsets()` - Creates DOM ranges from character offsets
-- **Improved delimiter offset handling**: Automatically adjusts cursor position when pattern delimiters are removed during transformation
-- **Better fallback**: Uses `setCaretAtEnd()` when precise restoration fails
-
-**Why this approach works:**
-- ✅ Decouples string offsets from DOM structure
-- ✅ Handles arbitrary nesting levels
-- ✅ Works for both inline and block transformations
-- ✅ Preserves cursor position accurately (no jumps or drift)
-- ✅ Accounts for removed delimiter characters in pattern transformations
+**Solution:** `getDomRangeFromContentOffsets()` - traverses DOM depth-first, accumulating character count
 
 **Used in:**
-- `smartReplaceChildren()` - inline pattern transformations
-- `handleSpanEdit()` - delimiter span unwrapping (via calculateCursorOffset + restoreCursor)
+- `smartReplaceChildren()` - pattern transformations
+- `unwrapAndReparse()` - span editing
 
-**Note on strikethrough**: Single tilde (`~`) delimiters are used instead of double tilde (`~~`) - see Decision 7 above.
+**Related utilities:** `reparse()`, `getFirstTextNode()`, `buildBlockFragmentWithReplacement()`
+
+### 9. Breaking Delimiter Handling
+
+**Problem:** What happens when user types delimiter in middle?
+
+**Chosen:** Break pattern and rematch
+
+**Example:** `*italic*` + type `*` in middle → `*ita*lic*` → `<em>ita</em>lic*`
+
+**Why:** Intuitive, matches markdown semantics (first pattern wins), allows building new regions
+
+**Implementation:** `handleBreakingDelimiters()` compares matched text vs. full content, triggers `unwrapAndReparse()` if different
 
 ## Technical Details
 
 ### Tag Lists
 
-Centralized in `dom.ts` to avoid duplication:
+Defined in [dom.ts](../src/lib/core/utils/dom.ts):
 
 ```typescript
-export const INLINE_FORMATTED_TAGS = ['STRONG', 'EM', 'CODE', 'S', 'DEL'] as const
-export const BLOCK_FORMATTED_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'LI'] as const
+INLINE_FORMATTED_TAGS = ['STRONG', 'EM', 'CODE', 'S', 'DEL']
+BLOCK_FORMATTED_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'LI']
 ```
 
-**Note:** Only markdown-compatible tags included (no `<U>` for underline).
+### Special Handling: List Items
 
-### Special Handling: List Items (LI)
+**Problem:** `<li>` needs parent context (`<ul>` → `-`, `<ol>` → `1.`)
 
-**Problem:** List items require parent context to determine correct delimiter.
-
-**Context dependency:**
-```html
-<ul><li>Item</li></ul>  →  "- Item"   (unordered list)
-<ol><li>Item</li></ol>  →  "1. Item"  (ordered list)
-```
-
-Without parent context, `htmlToMarkdown()` cannot determine which delimiter to use.
-
-**Solution in extractDelimiters() (focus-mark-manager.ts:169-183):**
-
-```typescript
-if (element.tagName === 'LI') {
-  const parentList = element.parentElement
-  if (!parentList || (parentList.tagName !== 'UL' && parentList.tagName !== 'OL')) {
-    return null
-  }
-
-  // Create parent list with single LI child
-  // This preserves context: UL → "- " or OL → "1. "
-  const listWrapper = document.createElement(parentList.tagName)
-  const liTemp = document.createElement('LI')
-  liTemp.textContent = textContent
-  listWrapper.appendChild(liTemp)
-  temp = listWrapper
-}
-```
-
-**How it works:**
-1. Detect if extracting delimiters for LI element
-2. Get parent list type (UL or OL)
-3. Create temporary wrapper with same list type
-4. Insert LI with text content into wrapper
-5. Convert wrapper to markdown: `htmlToMarkdown(temp.outerHTML)`
-6. Split by text content to extract delimiter
-7. Result: `"- "` for UL, `"1. "` for OL
-
-**Why this works:**
-- ✅ Preserves list type context for markdown converter
-- ✅ No hardcoded delimiter strings
-- ✅ Leverages existing htmlToMarkdown infrastructure
-- ✅ Handles both UL and OL automatically
+**Solution:** Create temporary wrapper with parent list type before markdown conversion
 
 ### CSS Styling
 
+Defined in [RichEditor.svelte](../src/lib/svelte/RichEditor.svelte):
+
 ```css
 .pd-focus-mark {
-  color: #888;                    /* Subtle gray */
+  color: #888;
   font-family: 'Courier New', monospace;
-  font-size: 0.9em;              /* Slightly smaller */
-  opacity: 0.7;                  /* Semi-transparent */
-  user-select: auto;             /* Can be selected */
-  pointer-events: auto;          /* Can be clicked */
-}
-
-/* Reset inherited formatting */
-strong > .pd-focus-mark,
-em > .pd-focus-mark {
-  font-weight: normal;
-  font-style: normal;
-  text-decoration: none;
+  font-size: 0.9em;
+  opacity: 0.7;
 }
 ```
 
-**Design rationale:**
-- Monospace font distinguishes marks from content
-- Gray color + opacity makes them visually secondary
-- Size reduction prevents marks from dominating
-- Resets ensure marks don't inherit parent styles (bold marks shouldn't be bold)
+**Rationale:** Monospace distinguishes from content, gray/opacity makes secondary, resets prevent inheritance
 
-### Performance Characteristics
+### Performance
 
-**Cost per selection change:**
-- DOM traversal: ~0.05ms (walks up parent chain)
-- Delimiter extraction: ~0.1-0.3ms (htmlToMarkdown + split)
-- Span injection: ~0.02ms (create 2-4 elements)
-- Span ejection: ~0.01ms (querySelectorAll + remove)
+- **Per selection change:** ~0.2-0.4ms
+- **Memory:** ~1 KB peak (4 spans max)
+- **Optimizations:** Early returns if unchanged, `isConnected` checks, normalize only after ejection
 
-**Total: ~0.2-0.4ms per selection change** (negligible)
+## Known Structural Limitations
 
-**Optimizations:**
-- Early returns if element unchanged (most common case)
-- `querySelector` checks if already marked (prevents double-injection)
-- `isConnected` check before ejection (handles deleted elements)
-- Text node normalization only after ejection (reduces DOM fragmentation)
+These are architectural constraints, not implementation bugs:
 
-### Memory Footprint
-
-**At rest (no marks visible):**
-- 1 FocusMarkManager instance
-- 2 references (activeInline, activeBlock) = ~16 bytes
-- 1 boolean flag (skipNextFocusMarks) = 1 byte
-
-**With marks visible (max case):**
-- 4 span elements × ~200 bytes = 800 bytes
-- 4 text nodes × ~50 bytes = 200 bytes
-
-**Total peak memory: ~1 KB** (insignificant)
-
-## Integration Points
-
-### 1. richEditorState.svelte.ts
-
-**Key Integration Points:**
-- **Initialization:** Creates `FocusMarkManager` instance (line 46)
-- **Selection handler:** Calls `focusMarkManager.update()` on selection changes, respects `skipNextFocusMarks` flag (lines ~398-410)
-- **Input handler - span editing:** Detects span modifications, mirrors edits, converts to markdown, replaces DOM (lines 197-261)
-- **Input handler - span stripping:** Clones block and removes focus mark spans before pattern detection (in normal flow)
-- **Sets skipNextFocusMarks:** After pattern transformations to prevent marks on newly created elements (line 251)
-
-**See:** `src/lib/svelte/richEditorState.svelte.ts`
-
-### 2. focus-mark-manager.ts
-
-**Key Methods:**
-- **`update()`:** Main entry point, finds focused elements, manages injection/ejection
-- **`findFocusedInline()`:** Detects cursor inside OR adjacent to formatted elements (includes edge detection)
-- **`injectInlineMarks()`:** Creates opening/closing mark spans
-- **`extractDelimiters()`:** Reverse-engineers markdown delimiters from HTML elements
-
-**See:** `src/lib/core/utils/focus-mark-manager.ts`
-
-### 3. dom.ts
-
-**Exports:**
-- `INLINE_FORMATTED_TAGS` - List of inline formatted tag names
-- `BLOCK_FORMATTED_TAGS` - List of block formatted tag names
-- `getFirstOfAncestors()` - Walks DOM tree to find matching parent
-
-**See:** `src/lib/core/utils/dom.ts`
-
-### 4. RichEditor.svelte
-
-**CSS Styling:**
-- `.pd-focus-mark` class with monospace font, gray color, opacity
-- Resets for inherited formatting (font-weight, font-style)
-
-**See:** `src/lib/svelte/RichEditor.svelte`
-
-## Known Limitations & Open Issues
-
-### 1. Block Mark Editing Not Implemented
-Editing block marks (headings, blockquotes, lists) is not yet handled:
-- **Current:** Only inline marks have `handleSpanEdit()` logic
-- **Missing:** Editing `#` → `##` should change heading level
-- **Missing:** Editing `>` should unwrap blockquote
-- **Missing:** Editing `-` or `1.` should unwrap list item or change list type
-- **Complexity:** Block transformations are more complex than inline (affect structure, not just text)
-
-**Status:** Not implemented, medium priority
-
-### 2. Nested List Item Depth Not Shown
-List item marks show `-` or `1.` but not indentation depth:
-- **Current:** `<ul><ul><li>Nested</li></ul></ul>` shows `"- "`
-- **Desired:** Could show `"  - "` (2 spaces for depth 2) or similar indicator
-- **Challenge:** Determining depth requires walking up tree counting UL/OL ancestors
-- **Trade-off:** May clutter UI, unclear if users need this
-
-**Status:** Not implemented, low priority
-
-### 3. Ordered List Numbering Always Shows "1."
-Ordered list marks always show `"1. "` regardless of actual item number:
-- **Current:** Third item in OL still shows `"1. "`
-- **Reason:** `htmlToMarkdown()` normalizes all OL items to start with `"1. "`
-- **Alternative:** Could calculate actual number by counting previous siblings
-- **Trade-off:** Markdown itself uses `"1. "` for all items (auto-numbering)
-
-**Status:** Working as designed (matches markdown convention), low priority to change
-
-### 4. Code Blocks Not Supported
-Multi-line code blocks (`` ``` ``) are not supported:
-- Unclear how to show marks on multi-line structure
-- Would require different injection strategy (block-level, not inline)
-- Low priority (single-line `` ` `` works fine)
-
-**Status:** Not implemented, low priority
-
-### 5. History System Interaction Not Verified
-Focus mark spans are UI-only and shouldn't affect undo/redo:
-- Currently: Marks are stripped before transformation (correct)
-- Edge case: If history snapshot captures mid-injection state
-- Mitigation: History uses coalescing, unlikely to capture transient state
-
-**Status:** Likely works correctly, needs explicit testing
-
-### 6. Multi-Cursor / Multi-Selection Not Supported
-Only supports single cursor/selection:
-- `activeInline` and `activeBlock` are single references
-- Multi-cursor would need arrays
-- Browser doesn't provide multi-cursor natively in contentEditable
-
-**Status:** Out of scope (browser limitation)
+1. **Block mark editing not implemented** - Requires different transformation strategy (affects structure, not just text)
+2. **List depth not shown** - Would require walking tree, unclear if users need it
+3. **Ordered lists always show "1."** - Matches markdown convention (auto-numbering)
+4. **Multi-line code blocks unsupported** - Unclear how to show marks on multi-line structure
+5. **Single cursor only** - Multi-cursor would need arrays (browser limitation)
 
 ## Future Enhancements
 
-### Potential Improvements
-
-1. **Animation on injection/ejection**
-   - Fade-in effect when marks appear
-   - Fade-out when they disappear
-   - CSS transition: `opacity 150ms ease-in-out`
-
-2. **Configurable styling**
-   - User preference for mark color/opacity
-   - Option to disable feature entirely
-   - Per-tag customization (different colors for headings vs. inline)
-
-3. **Keyboard shortcut to toggle**
-   - `Cmd+M` to show/hide marks globally
-   - Useful for screenshots or presentations
-
-4. **Show nested formatting hierarchy**
-   - Instead of only closest parent, show breadcrumb trail
-   - Example: `> # **` for bold inside heading inside blockquote
-   - Requires different UI approach (inline or tooltip)
-
-5. **Mark editing autocomplete**
-   - When editing `**`, suggest `__` as alternative
-   - When editing `#`, suggest `##`, `###`, etc.
-   - Requires autocomplete/suggestion UI
-
-## Testing Checklist
-
-### ✅ Implemented & Verified
-- [x] Inline marks appear when cursor enters formatted elements (bold, italic, code, etc.)
-- [x] Block marks appear for headings (H1-H6)
-- [x] Block marks appear for list items (UL/OL) with correct delimiter (`-` or `1.`)
-- [x] Marks eject when cursor leaves element
-- [x] Marks don't appear after pattern transformation (skipNextFocusMarks works)
-- [x] Visual styling distinguishes marks from content
-- [x] Cursor positioning preserved after inline transformations (getRangeFromBlockOffsets)
-- [x] Editing inline marks (`**` → `*`) unwraps and allows real-time re-transformation
-
-### ⏳ Implemented but Needs Testing
-- [ ] Block marks for blockquote (should show `>`)
-- [ ] Editing block marks (changing `#` → `##`, etc.)
-- [ ] Deleting all delimiter characters in a mark span
-- [ ] History system doesn't capture mark spans in snapshots
-- [ ] Paste operations with marks already visible
-- [ ] Undo/redo while marks are visible
-- [ ] Rapid cursor movement (arrow keys spam)
-- [ ] Complex nesting (e.g., bold inside italic inside blockquote)
-- [ ] Edge case: Empty formatted elements
-- [ ] Edge case: Formatted element with only whitespace
-
-### 🔴 Not Implemented
-- [ ] Block mark editing (changing heading levels, unwrapping blockquotes/lists)
-- [ ] Multi-line code block marks
-- [ ] Nested list depth indicators
-- [ ] Actual numbering for ordered list items (currently always "1.")
-- [ ] Animation/transitions for mark injection/ejection
+1. Animation - Fade in/out transitions
+2. Configurable styling - User preferences
+3. Keyboard toggle - Global shortcut
+4. Nested hierarchy - Show all formatting levels
+5. Mark autocomplete - Suggest alternatives
 
 ## Debugging
 
-### Common Issues
+**Common issues:**
+- Marks after transformation → Check `skipNextFocusMarks` flag
+- Duplicate marks → Check `querySelector` in inject, `querySelectorAll` in eject
+- Cursor jumps → Check `getDomRangeFromContentOffsets()` in `smartReplaceChildren()`
+- Pattern detection fails → Verify `getSpanlessClone()` used
 
-**Marks appear after transformation:**
-- Check `skipNextFocusMarks` flag is set in all transformation paths
-- Verify flag check in `onSelectionChange` before `update()` call
-
-**Marks duplicate or multiply:**
-- Ensure `querySelector('.pd-focus-mark')` check in inject functions
-- Verify ejection removes ALL marks (`querySelectorAll`, not `querySelector`)
-
-**Cursor jumps or gets lost:**
-- Browser handles cursor restoration automatically
-- Only issue if manually calling selection APIs in inject/eject
-- Current implementation doesn't touch selection (correct)
-
-**Pattern detection fails:**
-- Ensure span stripping happens BEFORE pattern detection
-- Verify `cleanBlock.normalize()` merges text nodes
-- Check that `htmlBlockToMarkdown()` receives cleanBlock, not original
-
-### Debug Logging
-
-Add to `FocusMarkManager.update()`:
+**Debug logging:**
 ```typescript
-console.log('[FocusMarks] Focused inline:', focusedInline?.tagName)
-console.log('[FocusMarks] Focused block:', focusedBlock?.tagName)
-console.log('[FocusMarks] Active inline:', this.activeInline?.tagName)
-console.log('[FocusMarks] Active block:', this.activeBlock?.tagName)
+// In update()
+console.log('[FocusMarks]', { focusedInline, activeInline })
+
+// In extractDelimiters()
+console.log('[FocusMarks]', { start, end, markdown })
 ```
 
-Add to `extractDelimiters()`:
-```typescript
-console.log('[FocusMarks] Extracted:', { start, end, markdown, text })
-```
+## Integration Points
 
----
-
-**Last Updated:** 2026-01-20
-**Feature Status:** ⏳ Core inline features working with recent improvements, some cursor positioning issues remain, see `focusMarks-status.md` for current state
-
-**Code Locations:**
-- `src/lib/core/utils/focus-mark-manager.ts` - Core FocusMarkManager class (partially disabled)
-- `src/lib/svelte/richEditorState.svelte.ts` - Integration and event handling (contains most logic now)
-- `src/lib/core/dom/smartReplaceChildren.ts` - Smart DOM reconciliation with cursor preservation (refactored 2026-01-20)
-- `src/lib/core/dom/util.ts` - DOM utility functions (getFirstTextNode, getDomRangeFromContentOffsets)
-- `src/lib/core/utils/dom.ts` - Helper functions (getFirstOfAncestors, INLINE_FORMATTED_TAGS, BLOCK_FORMATTED_TAGS)
-- `src/lib/svelte/RichEditor.svelte` - CSS styling
-
-**Recent Fixes (2026-01-20):**
-- ✅ **Issue #67**: Fixed delete before focus marks deleting all marks instead of just one
-  - Solution: Added `focusMarkManager.update()` call after unwrapping to ensure marks are refreshed correctly
-- ✅ **Space input in formatted text**: Fixed space not working in formatted elements
-- ✅ **Code organization**: Refactored `smartReplaceChildren` into dedicated module with enhanced utilities
-- ✅ **Test suite**: Reorganized 721-line monolithic test file into 9 focused, categorized test files
-
-**What Works:**
-- Inline mark injection/ejection (bold, italic, code, strikethrough, del)
-- Block mark injection for headings, blockquotes, list items
-- Span mirroring during editing
-- skipNextFocusMarks flag prevents marks on just-transformed content
-- Edge detection for adjacent formatted elements (improved but still needs work)
-- Delete/backspace before focus marks (issue #67 fixed)
-- Unified offsetToCaret logic for consistent caret tracking
-
-**What's Partially Working:**
-- Cursor positioning after span edits (improved with smartReplaceChildren refactor, but edge cases remain)
-- Edge detection (implemented but unreliable in some scenarios)
-
-**What Doesn't Work Yet:**
-- Block mark editing (changing heading levels, unwrapping blocks)
-- Multi-line code blocks
-- List item focus behavior (should focus end not span)
-- Hide default LI HTML markers
-- Issue #10: Breaking delimiters (typing delimiter in middle of formatted text)
-
-**⚠️ Implementation Note:**
-The current implementation temporarily places span editing logic in `richEditorState.svelte.ts` onInput handler (instead of `FocusMarkManager.handleSpanEdit()`) as a development strategy to address MutationObserver timing issues. This allows for rapid iteration and testing. Once the behavior is stable and working correctly, the logic will be refactored back into `focus-mark-manager.ts` to maintain clean architecture and encapsulation. See `docs/issues/focusMarks-status.md` for detailed current status and issues.
+See implementations:
+- [richEditorState.svelte.ts](../src/lib/svelte/richEditorState.svelte.ts) - Integration layer
+- [focus-mark-manager.ts](../src/lib/core/utils/focus-mark-manager.ts) - Core logic
+- [dom/util.ts](../src/lib/core/dom/util.ts) - DOM utilities
+- [smartReplaceChildren.ts](../src/lib/core/dom/smartReplaceChildren.ts) - Smart reconciliation
