@@ -4,12 +4,14 @@ import {
 	INLINE_FORMATTED_TAGS,
 	BLOCK_FORMATTED_TAGS,
 	getFirstOfAncestors,
-	isInlineFormattedElement
+	isInlineFormattedElement,
+	calculateCleanCursorOffset
 } from './dom'
 import { isBlockTagName } from './block-marks'
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
+import { setCaretAtEnd } from '.'
 
 /**
  * Class name for injected mark spans
@@ -216,15 +218,20 @@ export class FocusMarkManager {
 		const startSpan = this.createMarkSpan(delimiters.start)
 		const endSpan = this.createMarkSpan(delimiters.end)
 
-		// store refs in weakmap (auto garbage collected) // this appraoch failed because weakMap doesn't reflect immediately and await GC
-		// this.spanMeta.set(startSpan, delimiters.start)
-		// this.spanMeta.set(endSpan, delimiters.end)
-		// store refs in array for easy access
 		this.inlineSpanRefs = [startSpan, endSpan]
+
+		// issue#81 fix: check to correct caret to the R side if caret was at END of element
+		const selection = window.getSelection()
+		const offset = calculateCleanCursorOffset(element, selection!)
+		const atEnd = offset === element.textContent.length
 
 		// Inject at element boundaries
 		element.prepend(startSpan)
 		element.append(endSpan)
+
+		// correct to end
+		if (atEnd) setCaretAtEnd(element, selection!)
+
 		this.activeDelimiter = delimiters.start
 	}
 

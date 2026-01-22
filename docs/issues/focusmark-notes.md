@@ -26,7 +26,7 @@
 - issue#7.1:adding delimiters to change format causes caret to get to the end of block, because caret before marks types marks outside of it ❌
   > if there's an activeInline that is activated because we are at the edge of/right outside; also make any new input that is a valid delimeter go inside of to trigger a proper edit
 
-- issue#81: when focus marks appear due to caret from the right to the end of formattedElement, the caret must be outside and not inside the spans (caret at HOME behaves correctly due to edge sibling detection). 
+- issue#81: when focus marks appear due to caret from the right to the end of formattedElement, the caret must be outside and not inside the spans (caret at HOME behaves correctly due to edge sibling detection). ✅
   > when a user focuses the approches the right side of the element, from the right, by keyboard (mouse click works correctly) the caret goes inside `**bold|**` instead of correctly outside `**bold**|`
 
 
