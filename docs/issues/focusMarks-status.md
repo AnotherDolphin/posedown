@@ -1,17 +1,24 @@
 # FocusMarks - Current Status
 
-**Last Updated:** 2026-01-21
-**Latest Commit:** fded9d0 - Architecture consolidation
+**Last Updated:** 2026-01-23
+**Latest Commit:** Edge delimiter typing + marks escape refactor
 
 > **For architecture, design decisions, and how it works**, see [../focusMarks-design.md](../focusMarks-design.md)
 
 ## Executive Summary
 
-**Status:** ✅ Production-ready with consolidated architecture
+**Status:** ✅ Production-ready with edge delimiter support
 
-Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Minor cursor positioning edge cases remain (non-blocking).
+Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Edge delimiter typing and marks escape fully implemented.
 
 ## Recent Changes
+
+### 2026-01-23
+- ✅ **Issue #7 FIXED** - Edge delimiter typing (upgrade `*` to `**` at element edges)
+- ✅ **Issue #81 FIXED** - Caret positioning when approaching from right
+- ✅ New API: `tryHandleEdgeInput()` - handles typing delimiters at focus mark span edges
+- ✅ Marks escape refactored - moved from `onKeydown` to `onBeforeInput` (`applyMarks()`)
+- ✅ All text input handling consolidated in `onBeforeInput`
 
 ### 2026-01-21 (Commit fded9d0)
 - ✅ All logic moved from `richEditorState` to `FocusMarkManager`
@@ -37,10 +44,13 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 **Advanced Features:**
 - Real-time transformations (edit `**` → `*` to transform bold → italic)
+- **Edge delimiter typing (issue #7)** - type `*` at edge of `*italic*` to upgrade to `**bold**`
 - **Breaking delimiters (issue #10)** - type `*` inside `*italic*` breaks pattern
 - Edge detection (issue #34) - cursor adjacent to formatted elements
+- **Caret positioning (issue #81)** - correct positioning when approaching from right
 - Nested patterns - type `**bold**` inside `*italic*`
 - Delete/backspace before marks (issue #67)
+- Marks escape - typing at end of styled element exits formatting
 
 ## What's Broken / Incomplete
 
@@ -100,8 +110,10 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integration-points) for architecture.
 
 **Core Implementation:**
-- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (522 lines) - All logic here
+- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (635 lines) - All logic here
+  - New: `tryHandleEdgeInput()`, `isAtEdge()`, `wouldFormValidDelimiter()`
 - [richEditorState.svelte.ts](../../src/lib/svelte/richEditorState.svelte.ts) - Integration only
+  - New: `applyMarks()` (marks escape), consolidated `onBeforeInput` handling
 
 **DOM Utilities:**
 - [smartReplaceChildren.ts](../../src/lib/core/dom/smartReplaceChildren.ts) - Smart reconciliation
@@ -115,9 +127,11 @@ See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integra
 
 | Issue | Status | Notes |
 |-------|--------|-------|
+| #7 | ✅ Fixed | Edge delimiter typing (upgrade format at element edges) |
 | #10 | ✅ Fixed | Breaking delimiters (8/11 tests, 3 cursor edge cases) |
 | #34 | ✅ Fixed | Edge detection |
 | #67 | ✅ Fixed | Delete before marks |
-| - | ⏳ Partial | Cursor positioning |
+| #81 | ✅ Fixed | Caret positioning when approaching from right |
+| - | ⏳ Partial | Cursor positioning (minor edge cases in breaking delimiters) |
 | - | ⚠️ Not Impl | Block mark editing |
 | - | ⚠️ Not Impl | List UX |

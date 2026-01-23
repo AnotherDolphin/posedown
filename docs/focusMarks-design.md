@@ -26,15 +26,18 @@ See [focus-mark-manager.ts](../src/lib/core/utils/focus-mark-manager.ts) and [ri
 ```
 richEditorState.svelte.ts (Integration Layer)
 └── Delegates to FocusMarkManager via:
-    ├── onInput → handleActiveInline()
-    ├── onSelectionChange → update()
-    ├── onBlur → unfocus()
+    ├── onBeforeInput → tryHandleEdgeInput() (edge delimiter typing)
+    ├── onBeforeInput → applyMarks() (marks escape - exit formatting)
+    ├── onInput → handleActiveInline() (span editing, nested patterns)
+    ├── onSelectionChange → update() (show/hide marks)
+    ├── onBlur → unfocus() (clear marks)
     └── Sets skipNextFocusMarks flag after transformations
 
 FocusMarkManager (Core Implementation)
 ├── Public API:
 │   ├── update() - Main entry on selection change
 │   ├── handleActiveInline() - Orchestrates span editing
+│   ├── tryHandleEdgeInput() - Handle delimiter typing at focus mark edges
 │   ├── unfocus() - Clear all marks
 │   └── unwrapAndReparse() - Convert element to markdown and reparse
 │
@@ -48,6 +51,8 @@ FocusMarkManager (Core Implementation)
     ├── checkSpanStatus() - Detect modifications, mirror edits
     ├── handleNestedPatterns() - Process patterns inside active elements
     ├── handleBreakingDelimiters() - Handle delimiter typed in middle
+    ├── isAtEdge() - Check if cursor at edge of focus mark spans
+    ├── wouldFormValidDelimiter() - Validate potential delimiter upgrade
     ├── findFocusedInline/Block() - Find focused elements (with edge detection)
     ├── inject/ejectMarks() - Mark lifecycle
     ├── extractDelimiters() - Reverse-engineer markdown delimiters
@@ -95,7 +100,20 @@ User changes ** to * in focus mark span
   → Result: <em> if valid, plain text if invalid
 ```
 
-#### 4. Breaking Delimiter (Issue #10)
+#### 4. Edge Delimiter Typing (Issue #7)
+```
+User types * at edge of focus mark span
+  → onBeforeInput() fires
+  → tryHandleEdgeInput(selection, '*')
+  → isAtEdge() detects cursor at start/end of focus mark span
+  → wouldFormValidDelimiter() checks if * + * = ** is valid
+  → Insert typed char into target span
+  → handleActiveInline() detects modification
+  → checkSpanStatus() mirrors to paired span
+  → unwrapAndReparse() transforms *italic* → **bold**
+```
+
+#### 5. Breaking Delimiter (Issue #10)
 ```
 User types * in middle of *italic* → *ita*lic*
   → onInput() fires
@@ -192,7 +210,34 @@ const parts = markdown.split(textContent) // ["**", "**"]
 
 **Related utilities:** `reparse()`, `getFirstTextNode()`, `buildBlockFragmentWithReplacement()`
 
-### 9. Breaking Delimiter Handling
+### 9. Edge Delimiter Typing (Issue #7)
+
+**Problem:** Typing `*` at edge of `*italic*` (when focus marks visible) inserts outside element instead of upgrading to `**bold**`
+
+**Solution:** Intercept delimiter input in `onBeforeInput` when cursor is at edge of focus mark spans
+
+**Implementation:**
+- `isAtEdge()` detects cursor at offset 0 (opening) or end (closing) of focus mark spans
+- `wouldFormValidDelimiter()` validates if typed char + existing delimiter is supported
+- `tryHandleEdgeInput()` inserts into span, triggers `handleActiveInline()` for transformation
+
+**Why `onBeforeInput` not `onKeydown`:**
+- Consolidates all text input handling in one place
+- Avoids conflicts with marks escape system
+- `preventDefault()` only when actually handling, otherwise falls through
+
+### 10. Marks Escape Consolidation
+
+**Problem:** Marks escape (typing to exit formatting) was in `onKeydown`, separated from other text input logic
+
+**Solution:** Move to `onBeforeInput` as `applyMarks()` method
+
+**Why:**
+- All text input handling now in one place (`onBeforeInput`)
+- Clearer precedence: edge delimiter → marks escape → history coalescing
+- `onKeydown` only handles special keys (Enter, Tab, arrows, undo/redo)
+
+### 11. Breaking Delimiter Handling
 
 **Problem:** What happens when user types delimiter in middle?
 
