@@ -213,6 +213,13 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection?.anchorNode) return
 
+		// 2. Marks escape - exit styled element when typing at end
+		if (this.applyMarks(selection, e.data)) {
+			e.preventDefault()
+			return
+		}
+
+		// 3. History coalescing - break before potential transformation
 		const anchorNode = selection.anchorNode
 		if (anchorNode.nodeType !== Node.TEXT_NODE) return
 
@@ -227,6 +234,38 @@ export class RichEditorState {
 		if (endsWithValidDelimiter(afterInsert)) {
 			this.history.breakCoalescing(this.editableRef)
 		}
+	}
+
+	/**
+	 * Apply marks escape - insert character outside styled element when cursor is at end.
+	 * This allows typing to "exit" formatting (e.g., typing after bold text stays unbolded).
+	 *
+	 * @returns true if handled, false otherwise
+	 */
+	private applyMarks(selection: Selection, typedChar: string): boolean {
+		if (!this.marks || this.marks.length === 0) return false
+
+		// Insert character outside the outermost styled element
+		const textNode = document.createTextNode(typedChar)
+		const outermostEl = this.marks[this.marks.length - 1]
+
+		const range = selection.getRangeAt(0)
+		range.deleteContents()
+
+		insertAfter(textNode, outermostEl)
+
+		// Clean up empty nodes left behind
+		if (outermostEl?.textContent?.trim() === '' && outermostEl instanceof Element) {
+			outermostEl.remove()
+		}
+
+		setCaretAtEnd(textNode, selection)
+
+		// Trigger input handler to save state and handle md patterns
+		this.onInput(new Event('input'))
+		this.marks = null
+
+		return true
 	}
 
 	// this.marks instruction handler
@@ -314,38 +353,9 @@ export class RichEditorState {
 		// Break coalescing on arrow key navigation
 		if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
 			this.history.breakCoalescing(this.editableRef)
-			return
 		}
 
-		if (this.marks == null) return
-		if (e.key.length > 1 || e.ctrlKey || e.metaKey) return
-
-		e.preventDefault()
-		const selection = window.getSelection()
-		if (!selection || selection.rangeCount === 0 || !selection.anchorNode) return
-
-		// use marks state to exit current stylized node
-		const textNode = document.createTextNode(e.key)
-		const outermostElBeforeCaret =
-			this.marks.length > 0 ? this.marks[this.marks.length - 1] : selection.anchorNode
-
-		const range = selection.getRangeAt(0)
-		range.deleteContents()
-
-		insertAfter(textNode, outermostElBeforeCaret)
-
-		// delete empty nodes left behind (resolved backspace style escaper exited empty node but empty parent remained)
-		if (
-			outermostElBeforeCaret?.textContent?.trim() === '' &&
-			outermostElBeforeCaret instanceof Element
-		) {
-			outermostElBeforeCaret.remove()
-		}
-
-		setCaretAtEnd(textNode, selection)
-
-		this.onInput(e) // trigger input handler to save state and handle md patterns
-		this.marks = null
+		// Note: Marks escape (typing to exit styled elements) is now handled in onBeforeInput
 	}
 
 	// Handle selection changes for both FocusMarks and exit-styled-element tracking
