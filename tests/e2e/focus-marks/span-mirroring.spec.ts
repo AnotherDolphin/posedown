@@ -495,3 +495,211 @@ test.describe('Rich Editor - Focus Mark Span Mirroring', () => {
 		expect(text).toBe('text')
 	})
 })
+
+test.describe('Rich Editor - Edge Delimiter Typing', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto(EDITOR_URL)
+		await page.waitForLoadState('networkidle')
+
+		// Clear the editor
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+		await editor.click()
+		await page.keyboard.press('Control+a')
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(50)
+	})
+
+	test('should upgrade italic to bold by typing * at start of opening focus mark span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text
+		await editor.pressSequentially('*italic*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('italic')
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.first()).toContainText('*')
+
+		// 3. Navigate to START of opening focus mark span using ArrowLeft
+		// Structure: [*]italic[*] - cursor is somewhere in "italic", go left to opening span
+		for (let i = 0; i < 7; i++) {
+			await page.keyboard.press('ArrowLeft')
+		}
+		await page.waitForTimeout(50)
+
+		// 4. Type * - cursor is at offset 0 in opening span, should upgrade to **
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// 5. Click away to clear focus marks, then verify transformation
+		await editor.click({ position: { x: 0, y: 0 } })
+		await page.waitForTimeout(50)
+
+		// 6. Verify transformation to bold (skipNextFocusMarks prevents auto-show)
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('italic')
+	})
+
+	test('should upgrade italic to bold by typing * at end of closing focus mark span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text
+		await editor.pressSequentially('*text*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.last()).toContainText('*')
+
+		// 3. Navigate to END of closing focus mark span
+		// Structure: [*]text[*] - go right to end of closing span
+		for (let i = 0; i < 5; i++) {
+			await page.keyboard.press('ArrowRight')
+		}
+		await page.waitForTimeout(50)
+
+		// 4. Type * - cursor is at end of closing span, should upgrade
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// 5. Click away and verify
+		await editor.click({ position: { x: 0, y: 0 } })
+		await page.waitForTimeout(50)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('text')
+	})
+
+	test('should upgrade italic to bold in mid-sentence context', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create "prefix *italic* suffix"
+		await editor.pressSequentially('prefix *italic* suffix')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Navigate to end of closing focus mark using ArrowRight
+		for (let i = 0; i < 4; i++) {
+			await page.keyboard.press('ArrowRight')
+		}
+		await page.waitForTimeout(50)
+
+		// 4. Type * to upgrade
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// 5. Click elsewhere then verify
+		await editor.click({ position: { x: 0, y: 0 } })
+		await page.waitForTimeout(50)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('italic')
+
+		const text = await editor.locator('p').textContent()
+		expect(text).toBe('prefix italic suffix')
+	})
+
+	test('should not intercept non-delimiter characters at edge', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create "*italic*"
+		await editor.pressSequentially('*italic*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Navigate to end of closing focus mark
+		for (let i = 0; i < 7; i++) {
+			await page.keyboard.press('ArrowRight')
+		}
+		await page.waitForTimeout(50)
+
+		// 4. Type non-delimiter 'x' - should use marks escape, insert after </em>
+		await page.keyboard.type('x')
+		await page.waitForTimeout(50)
+
+		// 5. Italic should remain, x inserted after it
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('italic')
+
+		const text = await editor.locator('p').textContent()
+		expect(text).toBe('italicx')
+	})
+
+	test('should not upgrade when resulting delimiter is unsupported', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create "**bold**"
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click into bold to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.first()).toContainText('**')
+
+		// 3. Navigate to end of opening focus mark using ArrowRight
+		for (let i = 0; i < 6; i++) {
+			await page.keyboard.press('ArrowRight')
+		}
+		await page.waitForTimeout(50)
+
+		// 4. Type * - would create *** which is not supported, should use marks escape
+		await page.keyboard.type('*')
+		await page.waitForTimeout(50)
+
+		// 5. Bold should remain, * escapes after it
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('bold')
+
+		const text = await editor.locator('p').textContent()
+		expect(text).toBe('bold*')
+	})
+})

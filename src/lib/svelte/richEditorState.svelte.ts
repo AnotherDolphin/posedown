@@ -206,12 +206,19 @@ export class RichEditorState {
 		this.history.pushCoalesced(this.editableRef)
 	}
 
-	// save history entry before incoming transformation
+	// Handles all text input: edge delimiters, marks escape, and history coalescing
 	private onBeforeInput = (e: InputEvent) => {
 		if (e.inputType !== 'insertText' || !e.data || !this.editableRef) return
 
 		const selection = window.getSelection()
 		if (!selection?.anchorNode) return
+
+		// 1. Edge delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
+		if (this.focusMarkManager.tryHandleEdgeInput(selection, e.data)) {
+			e.preventDefault()
+			this.history.push(this.editableRef)
+			return
+		}
 
 		// 2. Marks escape - exit styled element when typing at end
 		if (this.applyMarks(selection, e.data)) {

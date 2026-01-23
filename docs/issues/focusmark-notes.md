@@ -24,6 +24,8 @@
 - issue#12: selecting multiple dels and typing doesn't mirror 
 - issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:70](/src/lib/core/transforms/transform.ts#L70)
 - issue#343: Cannot read properties of null (reading 'childNodes') [richEditorState.svelte.ts:246](/src/lib/svelte/richEditorState.svelte.ts#L246)
+- issue#71: mirroring end span to start span can displace caret due to offset increase
+- issue#72: typing between delimiters causes odd behavior, caret moves to end, separeated delimiter disappears
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput

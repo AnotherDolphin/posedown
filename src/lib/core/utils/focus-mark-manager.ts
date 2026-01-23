@@ -518,6 +518,87 @@ export class FocusMarkManager {
 		clone.querySelectorAll(`.${FOCUS_MARK_CLASS}`).forEach(span => span.remove())
 		return clone
 	}
+
+	// ============================ EDGE DELIMITER HANDLING ===================================
+
+	/**
+	 * Main entry point for handling edge delimiter input.
+	 * Call this from onBeforeInput to handle typing at the edge of a formatted element.
+	 *
+	 * @param selection - Current selection
+	 * @param typedChar - The character being typed
+	 * @returns true if handled (caller should preventDefault), false otherwise
+	 */
+	public tryHandleEdgeInput(selection: Selection, typedChar: string): boolean {
+		const edgePosition = this.isAtEdge(selection)
+		if (!edgePosition) return false
+		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
+
+		const [startSpan, endSpan] = this.inlineSpanRefs
+		const targetSpan = edgePosition === 'before-opening' ? startSpan : endSpan
+		if (!targetSpan) return false
+
+		// Insert at correct position (prepend for before-opening, append for after-closing)
+		if (edgePosition === 'before-opening') {
+			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
+		} else {
+			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
+		}
+
+		// Let handleActiveInline detect the modification, mirror, and trigger transformation
+		return this.handleActiveInline(selection)
+	}
+
+	/**
+	 * Check if cursor is at the edge of activeInline.
+	 * Detects both: cursor in adjacent text node, or cursor inside focus mark spans at their edges.
+	 */
+	private isAtEdge(selection: Selection): 'before-opening' | 'after-closing' | null {
+		if (!this.activeInline || !selection.anchorNode) return null
+		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
+
+		const textNode = selection.anchorNode as Text
+		const offset = selection.anchorOffset
+
+		// Case 1: Cursor in adjacent text node OUTSIDE activeInline
+		if (
+			offset === textNode.textContent?.length &&
+			textNode.nextSibling === this.activeInline
+		) {
+			return 'before-opening'
+		}
+		if (offset === 0 && textNode.previousSibling === this.activeInline) {
+			return 'after-closing'
+		}
+
+		// Case 2: Cursor INSIDE the focus mark spans at their edges
+		const [startSpan, endSpan] = this.inlineSpanRefs
+		if (startSpan && textNode.parentNode === startSpan && offset === 0) {
+			return 'before-opening'
+		}
+		if (endSpan && textNode.parentNode === endSpan && offset === textNode.textContent?.length) {
+			return 'after-closing'
+		}
+
+		return null
+	}
+
+	/**
+	 * Check if typing a character at the given edge would form a valid delimiter.
+	 */
+	private wouldFormValidDelimiter(
+		edgePosition: 'before-opening' | 'after-closing',
+		typedChar: string
+	): boolean {
+		if (!this.activeDelimiter) return false
+
+		const potentialDelimiter =
+			edgePosition === 'before-opening'
+				? typedChar + this.activeDelimiter
+				: this.activeDelimiter + typedChar
+
+		return SUPPORTED_INLINE_DELIMITERS.has(potentialDelimiter)
+	}
 }
 
 /**
