@@ -109,3 +109,8 @@ Users can migrate gradually:
 - **Security-first**: DOMPurify sanitization on all HTML
 - **Separation of concerns**: Framework-agnostic logic in core/
 - **Progressive enhancement**: Start with Svelte, expand to other frameworks
+
+### Ups
+
+- reading/editing decoupling of markdown
+- annoying mark add/delete for each side of pattern
