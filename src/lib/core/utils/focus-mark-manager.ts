@@ -43,7 +43,7 @@ export class FocusMarkManager {
 	 * Main update method - call this on selection change.
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
-	update(selection: Selection, root: HTMLElement): void {
+	update(selection: Selection, root: HTMLElement, skipCaretCorrection = false): void {
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
 
@@ -61,7 +61,7 @@ export class FocusMarkManager {
 
 			// Inject marks into new element
 			if (focusedInline) {
-				this.injectInlineMarks(focusedInline)
+				this.injectInlineMarks(focusedInline, skipCaretCorrection)
 			}
 
 			this.activeInline = focusedInline
@@ -206,7 +206,7 @@ export class FocusMarkManager {
 	 *
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
-	private injectInlineMarks(element: HTMLElement): void {
+	private injectInlineMarks(element: HTMLElement, skipCaretCorrection = false): void {
 		// Skip if already marked
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
@@ -221,6 +221,7 @@ export class FocusMarkManager {
 		this.inlineSpanRefs = [startSpan, endSpan]
 
 		// issue#81 fix: check to correct caret to the R side if caret was at END of element
+		// BUT skip this during reprocessing (issue#71) - caret is already correctly positioned
 		const selection = window.getSelection()
 		const offset = calculateCleanCursorOffset(element, selection!)
 		const atEnd = offset === element.textContent.length
@@ -229,8 +230,8 @@ export class FocusMarkManager {
 		element.prepend(startSpan)
 		element.append(endSpan)
 
-		// correct to end
-		if (atEnd) setCaretAtEnd(element, selection!)
+		// correct to end (only during manual navigation, not reprocessing)
+		if (atEnd && !skipCaretCorrection) setCaretAtEnd(element, selection!)
 
 		this.activeDelimiter = delimiters.start
 	}
@@ -364,7 +365,7 @@ export class FocusMarkManager {
 	 * @param selection - Current selection for caret restoration
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapAndReparse(selection: Selection): boolean {
+	public unwrapAndReparse(selection: Selection, skipCaretCorrection = false): boolean {
 		const formattedElement = this.activeInline
 		if (!formattedElement) return false
 
@@ -382,7 +383,7 @@ export class FocusMarkManager {
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		if (this.editableRef) {
-			this.update(selection, this.editableRef)
+			this.update(selection, this.editableRef, skipCaretCorrection)
 		}
 
 		return true
@@ -496,7 +497,20 @@ export class FocusMarkManager {
 
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spanModified || spanDisconnected) {
-			this.unwrapAndReparse(selection)
+			// Check if caret is at the END of the END span (not just inside it)
+			// This determines whether to apply issue #81 fix after reinjection:
+			// - Caret at end of end span (e.g., `**bold**|`) → apply fix → caret outside
+			// - Caret inside end span (e.g., `**bold*|*`) → skip fix → caret inside
+			const [, endSpan] = this.inlineSpanRefs
+			const anchorNode = selection.anchorNode
+			const caretAtEndOfEndSpan =
+				endSpan &&
+				anchorNode &&
+				endSpan.contains(anchorNode) &&
+				selection.anchorOffset === (anchorNode.textContent?.length || 0)
+
+			const skipCorrection = !caretAtEndOfEndSpan // Skip fix if caret wasn't at end of end span
+			this.unwrapAndReparse(selection, skipCorrection)
 			this.update(selection, this.editableRef!)
 			return true
 		}
@@ -568,10 +582,7 @@ export class FocusMarkManager {
 		const offset = selection.anchorOffset
 
 		// Case 1: Cursor in adjacent text node OUTSIDE activeInline
-		if (
-			offset === textNode.textContent?.length &&
-			textNode.nextSibling === this.activeInline
-		) {
+		if (offset === textNode.textContent?.length && textNode.nextSibling === this.activeInline) {
 			return 'before-opening'
 		}
 		if (offset === 0 && textNode.previousSibling === this.activeInline) {

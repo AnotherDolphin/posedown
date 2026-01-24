@@ -29,14 +29,23 @@
 - issue#81: when focus marks appear due to caret from the right to the end of formattedElement, the caret must be outside and not inside the spans (caret at HOME behaves correctly due to edge sibling detection). ✅
   > when a user focuses the approches the right side of the element, from the right, by keyboard (mouse click works correctly) the caret goes inside `**bold|**` instead of correctly outside `**bold**|`
 
-
 - issue#12: selecting multiple dels and typing doesn't mirror 
 
 - issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:70](/src/lib/core/transforms/transform.ts#L70)
 
 - issue#343: Cannot read properties of null (reading 'childNodes') [richEditorState.svelte.ts:246](/src/lib/svelte/richEditorState.svelte.ts#L246)
-- issue#71: mirroring end span to start span can displace caret due to offset increase
+
+- issue#71: mirroring end span to start span can displace caret due to offset increase ✅
+  > was: `**bold*|*` => backspace => correct caret logic, but then the last step of inline mark injection causes what should be `*bold|*` to be `*bold*|`
+  > wip: `**bold**|` => backspace => correct caret logic, but then the last step of inline mark injection causes what should be `*bold*|` to be `*bold|*`
+  > now: handled both
+
+- issue#71.1: adding a * at `*make bold*|` mirrors and transforms correctly, but moves the caret inside to the start of the end span ❌ 
+
 - issue#72: typing between delimiters causes odd behavior, caret moves to end, separeated delimiter disappears
+
+- issue#73: typing a * to the inside of end span like `*make bold|*` isn't triggered as a focus span edit
+
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅
