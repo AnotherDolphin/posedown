@@ -43,7 +43,7 @@ export class FocusMarkManager {
 	 * Main update method - call this on selection change.
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
-	update(selection: Selection, root: HTMLElement): void {
+	update(selection: Selection, root: HTMLElement, skipCaretCorrection = false): void {
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
 
@@ -61,7 +61,7 @@ export class FocusMarkManager {
 
 			// Inject marks into new element
 			if (focusedInline) {
-				this.injectInlineMarks(focusedInline)
+				this.injectInlineMarks(focusedInline, skipCaretCorrection)
 			}
 
 			this.activeInline = focusedInline
@@ -203,10 +203,12 @@ export class FocusMarkManager {
 	/**
 	 * Inject marks for inline formatted elements (bold, italic, code, etc.).
 	 * Creates two spans: opening and closing delimiters.
+	 * Corrects caret to end of delimiter on refocusing/navigating into R edge
+	 * but skips correction while editing/reparsing
 	 *
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
-	private injectInlineMarks(element: HTMLElement): void {
+	private injectInlineMarks(element: HTMLElement, skipCaretCorrection = false): void {
 		// Skip if already marked
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
@@ -221,6 +223,7 @@ export class FocusMarkManager {
 		this.inlineSpanRefs = [startSpan, endSpan]
 
 		// issue#81 fix: check to correct caret to the R side if caret was at END of element
+		// BUT skip this during reprocessing (issue#71) - caret is already correctly positioned
 		const selection = window.getSelection()
 		const offset = calculateCleanCursorOffset(element, selection!)
 		const atEnd = offset === element.textContent.length
@@ -229,8 +232,8 @@ export class FocusMarkManager {
 		element.prepend(startSpan)
 		element.append(endSpan)
 
-		// correct to end
-		if (atEnd) setCaretAtEnd(element, selection!)
+		// correct to end (only during manual navigation, not reprocessing)
+		if (atEnd && !skipCaretCorrection) setCaretAtEnd(element, selection!)
 
 		this.activeDelimiter = delimiters.start
 	}
@@ -362,9 +365,10 @@ export class FocusMarkManager {
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
 	 *
 	 * @param selection - Current selection for caret restoration
+	 * @param skipCaretCorrection - don't correct caret to end on reinjection
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapAndReparse(selection: Selection): boolean {
+	public unwrapAndReparse(selection: Selection, skipCaretCorrection = false): boolean {
 		const formattedElement = this.activeInline
 		if (!formattedElement) return false
 
@@ -381,9 +385,7 @@ export class FocusMarkManager {
 		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
-		if (this.editableRef) {
-			this.update(selection, this.editableRef)
-		}
+		this.editableRef && this.update(selection, this.editableRef, skipCaretCorrection)
 
 		return true
 	}
@@ -482,7 +484,7 @@ export class FocusMarkManager {
 	 * @param selection Current selection for caret restoration
 	 * @returns true if any inline handling occurred, false otherwise
 	 */
-	public handleActiveInline(selection: Selection): boolean {
+	public handleActiveInlineChange(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// Only enter focus mark edit flow if:
@@ -496,7 +498,9 @@ export class FocusMarkManager {
 
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spanModified || spanDisconnected) {
-			this.unwrapAndReparse(selection)
+			// Skip fix if caret wasn't at end of end span
+			const skipCorrection = this.isAtEdge(selection) !== 'after-closing'
+			this.unwrapAndReparse(selection, skipCorrection)
 			this.update(selection, this.editableRef!)
 			return true
 		}
@@ -529,31 +533,38 @@ export class FocusMarkManager {
 	// ============================ EDGE DELIMITER HANDLING ===================================
 
 	/**
-	 * Main entry point for handling edge delimiter input.
-	 * Call this from onBeforeInput to handle typing at the edge of a formatted element.
+	 * Main entry point for handling edge delimiter input at the far side of either side.
+	 * Called from onBeforeInput to handle typing at the edge of a formatted element.
 	 *
 	 * @param selection - Current selection
 	 * @param typedChar - The character being typed
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
-	public tryHandleEdgeInput(selection: Selection, typedChar: string): boolean {
+	public handleEdgeInput(selection: Selection, typedChar: string): boolean {
 		const edgePosition = this.isAtEdge(selection)
 		if (!edgePosition) return false
 		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = edgePosition === 'before-opening' ? startSpan : endSpan
-		if (!targetSpan) return false
-
 		// Insert at correct position (prepend for before-opening, append for after-closing)
 		if (edgePosition === 'before-opening') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
+			// side effect (design/bug): the text is placed into the span infront of the caret; caret doesn't move
 		} else {
 			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
+			// fix: issue#71.1 - correct caret to end to apply skipCorrection correctly later
+			setCaretAtEnd(targetSpan, selection)
 		}
 
-		// Let handleActiveInline detect the modification, mirror, and trigger transformation
-		return this.handleActiveInline(selection)
+		// side independent caret fix attempt
+		// const newOffset = edgePosition === 'before-opening' ? 1 : targetSpan.textContent!.length
+		// const range = getDomRangeFromContentOffsets(targetSpan, newOffset)
+		// // this snippet fails because onSelectionChange (and the effects inside) runs before removeAllRanges
+		// selection.removeAllRanges()
+		// selection.addRange(range)
+
+		return this.handleActiveInlineChange(selection)
 	}
 
 	/**
@@ -568,10 +579,7 @@ export class FocusMarkManager {
 		const offset = selection.anchorOffset
 
 		// Case 1: Cursor in adjacent text node OUTSIDE activeInline
-		if (
-			offset === textNode.textContent?.length &&
-			textNode.nextSibling === this.activeInline
-		) {
+		if (offset === textNode.textContent?.length && textNode.nextSibling === this.activeInline) {
 			return 'before-opening'
 		}
 		if (offset === 0 && textNode.previousSibling === this.activeInline) {

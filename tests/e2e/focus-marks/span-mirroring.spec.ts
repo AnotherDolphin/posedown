@@ -591,9 +591,7 @@ test.describe('Rich Editor - Edge Delimiter Typing', () => {
 		await expect(strong).toContainText('text')
 	})
 
-	test('should upgrade italic to bold in mid-sentence context', async ({
-		page
-	}) => {
+	test('should upgrade italic to bold in mid-sentence context', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 
 		// 1. Create "prefix *italic* suffix"
@@ -701,5 +699,256 @@ test.describe('Rich Editor - Edge Delimiter Typing', () => {
 
 		const text = await editor.locator('p').textContent()
 		expect(text).toBe('bold*')
+	})
+})
+
+test.describe('Focus Marks - Issue #71 Caret Logic', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto(EDITOR_URL)
+		await page.waitForLoadState('networkidle')
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+		await editor.click()
+		await page.keyboard.press('Control+a')
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(50)
+	})
+
+	test('should keep caret INSIDE when backspacing from inside the end span (**bold*|*)', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		// 3. Position caret exactly inside the end span: **bold*|*
+		// Sequence: End (after last *) -> Left (between *s)
+		await page.keyboard.press('End')
+		await page.keyboard.press('ArrowLeft')
+		await page.waitForTimeout(50)
+
+		// 4. Backspace -> deletes the second *
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(100)
+
+		// 5. Verification:
+		// - Content should be *bold* (italic)
+		// - Caret should be INSIDE the italic element, at the end of text 'bold'
+		// It should NOT be outside (*bold*|)
+
+		// Wait for transform
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('bold')
+
+		// Check caret position
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel || !sel.anchorNode) return null
+			return {
+				nodeType: sel.anchorNode.nodeType,
+				textContent: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parentNodeTagName: sel.anchorNode.parentNode?.nodeName
+			}
+		})
+
+		// Caret should be in a text node inside EM
+
+		console.log('Caret Info (Inside Case):', caretInfo)
+
+		expect(caretInfo?.parentNodeTagName).toBe('EM')
+		// Verify exact position: should be in the text content "bold", not in a delimiter
+		expect(caretInfo?.textContent).toBe('bold')
+	})
+
+	test('should move caret OUTSIDE when backspacing from end of end span (**bold**|)', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		// 2. Click to show marks
+		await editor.locator('strong').click()
+		await page.waitForTimeout(50)
+
+		// 3. Position caret at very end: **bold**|
+		await page.keyboard.press('End')
+		await page.waitForTimeout(50)
+
+		// 4. Backspace -> deletes the last *
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(100)
+
+		// 5. Verification:
+		// - Content should be *bold* (italic)
+		// - Caret should be OUTSIDE the italic element (in the paragraph)
+		// Scope: *bold*|
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// Check caret position
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel || !sel.anchorNode) return null
+			return {
+				nodeType: sel.anchorNode.nodeType,
+				textContent: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parentNodeTagName: sel.anchorNode.parentNode?.nodeName
+			}
+		})
+
+		console.log('Caret Info (Outside Case):', caretInfo)
+
+		// Parent should be SPAN (focus mark) or P (paragraph)
+		// User confirms this is "successful caret location" even if in SPAN visually at end
+		expect(caretInfo?.parentNodeTagName).toMatch(/SPAN|P/)
+
+		// Verify exact context:
+		// If in SPAN, text should be "*" (the delimiter)
+		// If in P, text might be empty or part of paragraph content
+		if (caretInfo?.parentNodeTagName === 'SPAN') {
+			expect(caretInfo?.textContent).toBe('*')
+		}
+	})
+
+	// issue#71.1: typing * at end of italic (*text*|) should transform to bold and keep caret OUTSIDE
+	test('should keep caret OUTSIDE when typing * at end of closing span (*italic*| -> **italic**|)', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text
+		await editor.pressSequentially('*italic*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('italic')
+
+		// 2. Click to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Position caret at very end: *italic*|
+		await page.keyboard.press('End')
+		await page.waitForTimeout(50)
+
+		// 4. Type * to upgrade to bold
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// 5. Verification:
+		// - Content should transform to **italic** (bold)
+		// - Caret should be OUTSIDE the bold element, not inside at start of end span
+		// Expected: **italic**|
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('italic')
+
+		// Check caret position
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel || !sel.anchorNode) return null
+			return {
+				nodeType: sel.anchorNode.nodeType,
+				textContent: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parentNodeTagName: sel.anchorNode.parentNode?.nodeName
+			}
+		})
+
+		console.log('Caret Info (issue#71.1 - typing * at end):', caretInfo)
+
+		// Caret should NOT be inside STRONG - it should be outside (in SPAN focus mark or P)
+		// If caret is inside STRONG, that's the bug described in issue#71.1
+		expect(caretInfo?.parentNodeTagName).not.toBe('STRONG')
+
+		// Acceptable positions: in the closing focus mark SPAN, or in the paragraph P
+		expect(caretInfo?.parentNodeTagName).toMatch(/SPAN|P/)
+
+		// If in a SPAN (focus mark), verify it's the closing delimiter
+		if (caretInfo?.parentNodeTagName === 'SPAN') {
+			expect(caretInfo?.textContent).toBe('**')
+			// Offset should be at end of the delimiter text
+			expect(caretInfo?.offset).toBe(2)
+		}
+	})
+
+	// issue#71.2: backspacing from inside closing span (**text*|*) should transform to italic and keep caret INSIDE
+	test('should keep caret INSIDE when backspacing from inside closing span (**text*|* -> *text*)', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text
+		await editor.pressSequentially('**text**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('text')
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Position caret inside the closing span: **text*|*
+		// Go to end, then left one to be between the two asterisks
+		await page.keyboard.press('End')
+		await page.keyboard.press('ArrowLeft')
+		await page.waitForTimeout(50)
+
+		// 4. Backspace to delete one * from inside
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(100)
+
+		// 5. Verification:
+		// - Mirroring should update opening delimiter to match
+		// - Content should transform to *text* (italic)
+		// - Caret should remain INSIDE the element, at the end of "text"
+		// Expected: *tex|t* with caret inside <em>
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('text')
+
+		// Check caret position
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel || !sel.anchorNode) return null
+			return {
+				nodeType: sel.anchorNode.nodeType,
+				textContent: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parentNodeTagName: sel.anchorNode.parentNode?.nodeName
+			}
+		})
+
+		console.log('Caret Info (issue#71.2 - backspace from inside):', caretInfo)
+
+		// Caret should be INSIDE the EM element
+		expect(caretInfo?.parentNodeTagName).toBe('EM')
+		// Should be in the text content "text"
+		expect(caretInfo?.textContent).toBe('text')
 	})
 })

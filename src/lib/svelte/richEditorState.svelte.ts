@@ -187,7 +187,7 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return false
 
-		if (this.focusMarkManager.handleActiveInline(selection)) {
+		if (this.focusMarkManager.handleActiveInlineChange(selection)) {
 			this.history.push(this.editableRef)
 			return
 		}
@@ -214,7 +214,7 @@ export class RichEditorState {
 		if (!selection?.anchorNode) return
 
 		// 1. Edge delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
-		if (this.focusMarkManager.tryHandleEdgeInput(selection, e.data)) {
+		if (this.focusMarkManager.handleEdgeInput(selection, e.data)) {
 			e.preventDefault()
 			this.history.push(this.editableRef)
 			return

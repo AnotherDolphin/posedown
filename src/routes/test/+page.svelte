@@ -2,9 +2,6 @@
 	import { RichEditor } from '$lib/svelte'
 
 	// Example from the plan document
-	let initialContent = 'This is **bold and _italic_** text'
-
-	let content = $state(initialContent)
 
 	const handleUpdate = (newContent: string) => {
 		content = newContent
@@ -13,7 +10,7 @@
 	const examples = [
 		{
 			name: 'Simple Bold & Italic',
-			content: 'This is **bold and _italic_** text'
+			content: 'This is **bold and _italic_** text and only **bold** and *italic* only'
 		},
 		{
 			name: 'Heading with Formatting',
@@ -32,6 +29,9 @@
 			content: '# Todo List\n\n- Item one\n- Item **two** with bold\n- Item _three_ with italic'
 		}
 	]
+
+	let content = $state(examples[0].content)
+
 
 	function loadExample(exampleContent: string) {
 		content = exampleContent
