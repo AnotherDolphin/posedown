@@ -557,17 +557,24 @@ export class FocusMarkManager {
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = edgePosition === 'before-opening' ? startSpan : endSpan
-		if (!targetSpan) return false
-
 		// Insert at correct position (prepend for before-opening, append for after-closing)
 		if (edgePosition === 'before-opening') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
+			// side effect (design/bug): the text is placed into the span infront of the caret; caret doesn't move
 		} else {
 			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
+			// fix: issue#71.1 - correct caret to end to apply skipCorrection correctly later
+			setCaretAtEnd(targetSpan, selection)
 		}
 
-		// Let handleActiveInline detect the modification, mirror, and trigger transformation
-		return this.handleActiveInline(selection)
+		// side independent caret fix attempt
+		// const newOffset = edgePosition === 'before-opening' ? 1 : targetSpan.textContent!.length
+		// const range = getDomRangeFromContentOffsets(targetSpan, newOffset)
+		// // this snippet fails because onSelectionChange (and the effects inside) runs before removeAllRanges
+		// selection.removeAllRanges()
+		// selection.addRange(range)
+
+		return this.handleActiveInlineChange(selection)
 	}
 
 	/**

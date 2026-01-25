@@ -40,7 +40,7 @@
   > wip: `**bold**|` => backspace => correct caret logic, but then the last step of inline mark injection causes what should be `*bold*|` to be `*bold|*`
   > now: handled both
 
-- issue#71.1: adding a * at `*make bold*|` mirrors and transforms correctly, but moves the caret inside to the start of the end span ❌ 
+- issue#71.1: adding a * at `*make bold*|` mirrors and transforms correctly, but moves the caret inside to the start of the end span ✅ 
 
 - issue#72: typing between delimiters causes odd behavior, caret moves to end, separeated delimiter disappears
 
