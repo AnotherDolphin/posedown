@@ -203,6 +203,8 @@ export class FocusMarkManager {
 	/**
 	 * Inject marks for inline formatted elements (bold, italic, code, etc.).
 	 * Creates two spans: opening and closing delimiters.
+	 * Corrects caret to end of delimiter on refocusing/navigating into R edge
+	 * but skips correction while editing/reparsing
 	 *
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
@@ -363,6 +365,7 @@ export class FocusMarkManager {
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
 	 *
 	 * @param selection - Current selection for caret restoration
+	 * @param skipCaretCorrection - don't correct caret to end on reinjection
 	 * @returns true if unwrap was performed, false otherwise
 	 */
 	public unwrapAndReparse(selection: Selection, skipCaretCorrection = false): boolean {
@@ -382,9 +385,7 @@ export class FocusMarkManager {
 		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
-		if (this.editableRef) {
-			this.update(selection, this.editableRef, skipCaretCorrection)
-		}
+		this.editableRef && this.update(selection, this.editableRef, skipCaretCorrection)
 
 		return true
 	}
@@ -483,7 +484,7 @@ export class FocusMarkManager {
 	 * @param selection Current selection for caret restoration
 	 * @returns true if any inline handling occurred, false otherwise
 	 */
-	public handleActiveInline(selection: Selection): boolean {
+	public handleActiveInlineChange(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// Only enter focus mark edit flow if:
@@ -497,19 +498,8 @@ export class FocusMarkManager {
 
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spanModified || spanDisconnected) {
-			// Check if caret is at the END of the END span (not just inside it)
-			// This determines whether to apply issue #81 fix after reinjection:
-			// - Caret at end of end span (e.g., `**bold**|`) → apply fix → caret outside
-			// - Caret inside end span (e.g., `**bold*|*`) → skip fix → caret inside
-			const [, endSpan] = this.inlineSpanRefs
-			const anchorNode = selection.anchorNode
-			const caretAtEndOfEndSpan =
-				endSpan &&
-				anchorNode &&
-				endSpan.contains(anchorNode) &&
-				selection.anchorOffset === (anchorNode.textContent?.length || 0)
-
-			const skipCorrection = !caretAtEndOfEndSpan // Skip fix if caret wasn't at end of end span
+			// Skip fix if caret wasn't at end of end span
+			const skipCorrection = this.isAtEdge(selection) !== 'after-closing'
 			this.unwrapAndReparse(selection, skipCorrection)
 			this.update(selection, this.editableRef!)
 			return true
@@ -543,14 +533,14 @@ export class FocusMarkManager {
 	// ============================ EDGE DELIMITER HANDLING ===================================
 
 	/**
-	 * Main entry point for handling edge delimiter input.
-	 * Call this from onBeforeInput to handle typing at the edge of a formatted element.
+	 * Main entry point for handling edge delimiter input at the far side of either side.
+	 * Called from onBeforeInput to handle typing at the edge of a formatted element.
 	 *
 	 * @param selection - Current selection
 	 * @param typedChar - The character being typed
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
-	public tryHandleEdgeInput(selection: Selection, typedChar: string): boolean {
+	public handleEdgeInput(selection: Selection, typedChar: string): boolean {
 		const edgePosition = this.isAtEdge(selection)
 		if (!edgePosition) return false
 		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
