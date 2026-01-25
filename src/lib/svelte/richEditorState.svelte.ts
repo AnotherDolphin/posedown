@@ -214,7 +214,7 @@ export class RichEditorState {
 		if (!selection?.anchorNode) return
 
 		// 1. Edge delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
-		if (this.focusMarkManager.handleEdgeInput(selection, e.data)) {
+		if (this.focusMarkManager.handleMarkSpanEdges(selection, e.data)) {
 			e.preventDefault()
 			this.history.push(this.editableRef)
 			return

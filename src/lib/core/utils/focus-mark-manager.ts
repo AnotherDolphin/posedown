@@ -533,18 +533,22 @@ export class FocusMarkManager {
 	// ============================ EDGE DELIMITER HANDLING ===================================
 
 	/**
-	 * Main entry point for handling edge delimiter input at the far side of either side.
-	 * Called from onBeforeInput to handle typing at the edge of a formatted element.
+	 * Handle typing delimiter characters at the edges of focus mark spans.
+	 * Intercepts input to upgrade delimiters (e.g., * → ** for italic → bold).
+	 *
+	 * Handles three edge positions:
+	 * - before-opening: prepend to opening span
+	 * - before-closing: prepend to closing span (issue#73)
+	 * - after-closing: append to closing span
 	 *
 	 * @param selection - Current selection
 	 * @param typedChar - The character being typed
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
-	public handleEdgeInput(selection: Selection, typedChar: string): boolean {
+	public handleMarkSpanEdges(selection: Selection, typedChar: string): boolean {
 		const edgePosition = this.isAtEdge(selection)
 		if (!edgePosition) return false
 		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
-console.log(edgePosition)
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = edgePosition === 'before-opening' ? startSpan : endSpan
@@ -570,6 +574,7 @@ console.log(edgePosition)
 
 	/**
 	 * Check if cursor is at the edge of activeInline.
+	 * Detects both: cursor in adjacent text node, or cursor inside focus mark spans at their edges.
 	 *
 	 * Returns:
 	 * - 'before-opening': cursor is before/at start of opening delimiter
@@ -610,10 +615,8 @@ console.log(edgePosition)
 		// Case 3: Cursor in text content INSIDE activeInline, at boundary with endSpan
 		// This handles issue#73: caret anchors to preceding node, so when at *text|*
 		// the anchorNode is "text" (not endSpan), offset is at end, nextSibling is endSpan
-		if (textNode.parentNode === this.activeInline) {
-			if (offset === textNode.textContent?.length && textNode.nextSibling === endSpan) {
-				return 'before-closing'
-			}
+		if (offset === textNode.textContent?.length && textNode.nextSibling === endSpan) {
+			return 'before-closing'
 		}
 
 		return null
