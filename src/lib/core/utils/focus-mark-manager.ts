@@ -544,11 +544,12 @@ export class FocusMarkManager {
 		const edgePosition = this.isAtEdge(selection)
 		if (!edgePosition) return false
 		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
+console.log(edgePosition)
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = edgePosition === 'before-opening' ? startSpan : endSpan
-		// Insert at correct position (prepend for before-opening, append for after-closing)
-		if (edgePosition === 'before-opening') {
+		// Insert at correct position (prepend for before-opening/before-closing, append for after-closing)
+		if (edgePosition === 'before-opening' || edgePosition === 'before-closing') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
 			// side effect (design/bug): the text is placed into the span infront of the caret; caret doesn't move
 		} else {
@@ -569,9 +570,20 @@ export class FocusMarkManager {
 
 	/**
 	 * Check if cursor is at the edge of activeInline.
-	 * Detects both: cursor in adjacent text node, or cursor inside focus mark spans at their edges.
+	 *
+	 * Returns:
+	 * - 'before-opening': cursor is before/at start of opening delimiter
+	 * - 'before-closing': cursor is at the boundary before the closing delimiter (issue#73)
+	 * - 'after-closing': cursor is after/at end of closing delimiter
+	 *
+	 * Detects three cases:
+	 * 1. Cursor in adjacent text node OUTSIDE activeInline
+	 * 2. Cursor INSIDE the focus mark spans at their edges
+	 * 3. Cursor in text content INSIDE activeInline, at boundary with endSpan
+	 *
+	 *  after-opening is not handled because caret correctly focuses preceding node by default
 	 */
-	private isAtEdge(selection: Selection): 'before-opening' | 'after-closing' | null {
+	private isAtEdge(selection: Selection): 'before-opening' | 'before-closing' | 'after-closing' | null {
 		if (!this.activeInline || !selection.anchorNode) return null
 		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
 
@@ -595,6 +607,15 @@ export class FocusMarkManager {
 			return 'after-closing'
 		}
 
+		// Case 3: Cursor in text content INSIDE activeInline, at boundary with endSpan
+		// This handles issue#73: caret anchors to preceding node, so when at *text|*
+		// the anchorNode is "text" (not endSpan), offset is at end, nextSibling is endSpan
+		if (textNode.parentNode === this.activeInline) {
+			if (offset === textNode.textContent?.length && textNode.nextSibling === endSpan) {
+				return 'before-closing'
+			}
+		}
+
 		return null
 	}
 
@@ -602,15 +623,15 @@ export class FocusMarkManager {
 	 * Check if typing a character at the given edge would form a valid delimiter.
 	 */
 	private wouldFormValidDelimiter(
-		edgePosition: 'before-opening' | 'after-closing',
+		edgePosition: 'before-opening' | 'before-closing' | 'after-closing',
 		typedChar: string
 	): boolean {
 		if (!this.activeDelimiter) return false
 
 		const potentialDelimiter =
-			edgePosition === 'before-opening'
-				? typedChar + this.activeDelimiter
-				: this.activeDelimiter + typedChar
+			edgePosition === 'after-closing'
+				? this.activeDelimiter + typedChar
+				: typedChar + this.activeDelimiter
 
 		return SUPPORTED_INLINE_DELIMITERS.has(potentialDelimiter)
 	}

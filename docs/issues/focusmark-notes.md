@@ -44,7 +44,7 @@
 
 - issue#72: typing between delimiters causes odd behavior, caret moves to end, separeated delimiter disappears
 
-- issue#73: typing a * to the inside of end span like `*make bold|*` isn't triggered as a focus span edit
+- issue#73: typing a * to the inside of end span like `*make bold|*` isn't triggered as a focus span edit ✅
 
 
 ### later

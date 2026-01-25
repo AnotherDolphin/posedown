@@ -591,6 +591,48 @@ test.describe('Rich Editor - Edge Delimiter Typing', () => {
 		await expect(strong).toContainText('text')
 	})
 
+	// issue#73: typing * at START of closing focus mark span (at boundary with text content)
+	test('should upgrade italic to bold by typing * at start of closing focus mark span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text
+		await editor.pressSequentially('*text*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.last()).toContainText('*')
+
+		// 3. Navigate to boundary before closing focus mark span
+		// Structure: [*]text[*] - go to start of element, then right past opening span and text
+		// Home -> at start of opening span, then 5 right (1 for *, 4 for "text") = at boundary
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 5; i++) {
+			await page.keyboard.press('ArrowRight')
+		}
+		await page.waitForTimeout(50)
+		// 4. Type * - cursor is at end of "text", nextSibling is endSpan (before-closing)
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// 5. Click away and verify
+		await editor.click({ position: { x: 0, y: 0 } })
+		await page.waitForTimeout(50)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+		await expect(strong).toContainText('text')
+	})
+
 	test('should upgrade italic to bold in mid-sentence context', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 
