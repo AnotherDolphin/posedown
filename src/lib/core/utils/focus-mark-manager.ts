@@ -497,7 +497,8 @@ export class FocusMarkManager {
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spansMirrored || spansDisconnected || invalidChanges) {
 			// Skip fix if caret wasn't at end of end span
-			const skipCorrection = this.isAtEdge(selection) !== 'after-closing'
+			const edge = this.isAtEdge(selection)
+			const skipCorrection = !(edge?.position === 'after' && edge?.target === 'close')
 			this.unwrapAndReparse(selection, skipCorrection)
 			this.update(selection, this.editableRef!)
 			return true
@@ -534,136 +535,98 @@ export class FocusMarkManager {
 	 * Handle typing delimiter characters at the edges of focus mark spans.
 	 * Intercepts input to upgrade delimiters (e.g., * → ** for italic → bold).
 	 *
-	 * Handles four edge positions:
-	 * - before-opening: prepend to opening span
-	 * - after-opening: append to opening span
-	 * - before-closing: prepend to closing span (issue#73)
-	 * - after-closing: append to closing span
-	 *
 	 * @param selection - Current selection
 	 * @param typedChar - The character being typed
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
 	public handleMarkSpanEdges(selection: Selection, typedChar: string): boolean {
-		const edgePosition = this.isAtEdge(selection)
-		if (!edgePosition) return false
+		const edge = this.isAtEdge(selection)
+		if (!edge) return false
 
+		const { position, target } = edge
 		const [startSpan, endSpan] = this.inlineSpanRefs
+		const targetSpan = target === 'open' ? startSpan : endSpan
+		const validDelimiter = this.wouldFormValidDelimiter(position, typedChar)
 
-		// Handle after-opening: if invalid delimiter, insert into content instead of span
-
-		if (edgePosition === 'after-opening' && !this.wouldFormValidDelimiter(edgePosition, typedChar)) {
-			// Insert char into content after startSpan
+		// Special case: after opening span with invalid delimiter → insert into content
+		if (position === 'after' && target === 'open' && !validDelimiter) {
 			const contentNode = startSpan.nextSibling
 			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
 				contentNode.textContent = typedChar + (contentNode.textContent || '')
 			} else {
-				// No text node after startSpan, create one
 				const textNode = document.createTextNode(typedChar)
 				startSpan.after(textNode)
 			}
-			// Move caret after inserted char
-			const targetNode = startSpan.nextSibling as Text
-			setCaretAtEnd(targetNode, selection)
+			setCaretAtEnd(startSpan.nextSibling as Text, selection)
 			return true
 		}
 
-		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
+		if (!validDelimiter) return false
 
-		const targetSpan =
-			edgePosition === 'before-opening' || edgePosition === 'after-opening' ? startSpan : endSpan
-		// Insert at correct position (prepend for before-opening/before-closing, append for after-opening/after-closing)
-		if (edgePosition === 'before-opening' || edgePosition === 'before-closing') {
+		// Insert into span: prepend for 'before', append for 'after'
+		if (position === 'before') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
-			// side effect (design/bug): the text is placed into the span infront of the caret; caret doesn't move
 		} else {
 			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
-			// fix: issue#71.1 - correct caret to end to apply skipCorrection correctly later
 			setCaretAtEnd(targetSpan, selection)
 		}
-
-		// side independent caret fix attempt
-		// const newOffset = edgePosition === 'before-opening' ? 1 : targetSpan.textContent!.length
-		// const range = getDomRangeFromContentOffsets(targetSpan, newOffset)
-		// // this snippet fails because onSelectionChange (and the effects inside) runs before removeAllRanges
-		// selection.removeAllRanges()
-		// selection.addRange(range)
 
 		return this.handleActiveInlineChange(selection)
 	}
 
 	/**
 	 * Check if cursor is at the edge of activeInline.
-	 * Detects both: cursor in adjacent text node, or cursor inside focus mark spans at their edges.
+	 * Detects cursor in adjacent text node or inside focus mark spans at their edges.
 	 *
-	 * Returns:
-	 * - 'before-opening': cursor is before/at start of opening delimiter
-	 * - 'after-opening': cursor is after/at end of opening delimiter
-	 * - 'before-closing': cursor is at the boundary before the closing delimiter (issue#73)
-	 * - 'after-closing': cursor is after/at end of closing delimiter
-	 *
-	 * Detects cases:
-	 * 1. Cursor in adjacent text node OUTSIDE activeInline
-	 * 2. Cursor INSIDE the focus mark spans at their edges
-	 * 2b. Cursor at END of opening span (after-opening)
-	 * 3. Cursor in text content INSIDE activeInline, at boundary with endSpan
-	 * 3b. Cursor at boundary after startSpan (after-opening)
+	 * @returns Object with position info, or null if not at edge
+	 *   - position: 'before' | 'after' - relative to the target span
+	 *   - target: 'open' | 'close' - which span the cursor is at
+	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
 	 */
-	private isAtEdge(
-		selection: Selection
-	): 'before-opening' | 'after-opening' | 'before-closing' | 'after-closing' | null {
+	private isAtEdge(selection: Selection): {
+		position: 'before' | 'after'
+		target: 'open' | 'close'
+		caretInSpan: boolean
+	} | null {
 		if (!this.activeInline || !selection.anchorNode) return null
 		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
 
 		const textNode = selection.anchorNode as Text
 		const offset = selection.anchorOffset
-
-		// Case 1: Cursor in adjacent text node OUTSIDE activeInline
-		if (offset === textNode.textContent?.length && textNode.nextSibling === this.activeInline) {
-			return 'before-opening'
-		}
-		if (offset === 0 && textNode.previousSibling === this.activeInline) {
-			return 'after-closing'
-		}
-
-		// Case 2: Cursor INSIDE the focus mark spans at their edges
 		const [startSpan, endSpan] = this.inlineSpanRefs
-		if (startSpan && textNode.parentNode === startSpan && offset === 0) {
-			return 'before-opening'
-		}
-		// Case 2b: Cursor at END of opening span (after-opening)
-		if (startSpan && textNode.parentNode === startSpan && offset === textNode.textContent?.length) {
-			return 'after-opening'
-		}
-		if (endSpan && textNode.parentNode === endSpan && offset === textNode.textContent?.length) {
-			return 'after-closing'
-		}
 
-		// Case 3: Cursor in text content INSIDE activeInline, at boundary with endSpan
-		// This handles issue#73: caret anchors to preceding node, so when at *text|*
-		// the anchorNode is "text" (not endSpan), offset is at end, nextSibling is endSpan
-		if (offset === textNode.textContent?.length && textNode.nextSibling === endSpan) {
-			return 'before-closing'
-		}
-		// Case 3b: Cursor at boundary after startSpan (after-opening)
-		if (offset === 0 && textNode.previousSibling === startSpan) {
-			return 'after-opening'
-		}
+		const atStart = offset === 0
+		const atEnd = offset === textNode.textContent?.length
+		if (!atStart && !atEnd) return null
 
-		return null
+		const parent = textNode.parentNode
+		const next = textNode.nextSibling
+		const prev = textNode.previousSibling
+
+		// Determine target span from context
+		const target: 'open' | 'close' | null =
+			parent === startSpan || (atEnd && next === this.activeInline) || (atStart && prev === startSpan)
+				? 'open'
+				: parent === endSpan || (atStart && prev === this.activeInline) || (atEnd && next === endSpan)
+					? 'close'
+					: null
+
+		if (!target) return null
+
+		const caretInSpan = parent === startSpan || parent === endSpan
+		const position = caretInSpan ? (atStart ? 'before' : 'after') : atEnd ? 'before' : 'after'
+
+		return { position, target, caretInSpan }
 	}
 
 	/**
 	 * Check if typing a character at the given edge would form a valid delimiter.
 	 */
-	private wouldFormValidDelimiter(
-		edgePosition: 'before-opening' | 'after-opening' | 'before-closing' | 'after-closing',
-		typedChar: string
-	): boolean {
+	private wouldFormValidDelimiter(position: 'before' | 'after', typedChar: string): boolean {
 		if (!this.activeDelimiter) return false
 
 		const potentialDelimiter =
-			edgePosition === 'after-opening' || edgePosition === 'after-closing'
+			position === 'after'
 				? this.activeDelimiter + typedChar
 				: typedChar + this.activeDelimiter
 
