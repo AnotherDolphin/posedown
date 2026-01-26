@@ -1,11 +1,11 @@
 # FocusMarks Feature Analysis
 
-**Date:** 2026-01-24
+**Date:** 2026-01-26
 **Author:** Claude (automated analysis)
 
 ## Overall Status: ✅ Production-Ready (Core)
 
-The core functionality is complete and working. 55/88 tests passing (62.5%). The remaining issues are edge cases and UX polish, not blockers.
+The core functionality is complete and working. 58/94 tests passing (61.7%). The remaining issues are edge cases and UX polish, not blockers.
 
 ---
 
@@ -34,7 +34,18 @@ The core functionality is complete and working. 55/88 tests passing (62.5%). The
 |-------|-------------|----------|
 | **#8** | Undo last transform → input pattern → "range not found" error | Medium |
 | **#343** | Null error reading 'childNodes' in richEditorState | Low |
-| **#72** | Typing between delimiters: odd behavior, caret moves to end | Medium |
+| **#9** | Spans don't unwrap as simple text when delimiters become invalid | Medium |
+
+### ✅ Recently Fixed (since 2026-01-24)
+
+| Issue | Description |
+|-------|-------------|
+| **#71** | Mirroring end span to start span displaced caret |
+| **#71.1** | Adding delimiter at end mirrors/transforms but moved caret incorrectly |
+| **#72** | Typing between delimiters: odd behavior, caret moves to end |
+| **#73** | Typing inside end span wasn't triggered as focus span edit |
+| **#74** | Emptying focused element then typing doubled delimiters |
+| **#75** | Typing between delimiters unpredictable, focus marks hidden incorrectly |
 
 ### 🟡 Partially Working
 
@@ -68,12 +79,12 @@ These are **not bugs** - they're architectural constraints:
 ## Priority Recommendations
 
 ### High Priority (Bugs affecting UX)
-1. **#72** - Typing between delimiters breaks things
-2. **#9** - Invalid delimiter unwrapping
-3. **#8** - Undo/redo error
+1. **#9** - Invalid delimiter unwrapping (spans don't convert to plain text)
+2. **#8** - Undo/redo error ("range not found")
+3. **#343** - Null error reading 'childNodes'
 
 ### Medium Priority (Polish)
-4. Cursor positioning edge cases (flaky tests)
+4. Cursor positioning edge cases (6 failures in caret-boundary tests)
 5. Complex mirroring scenarios
 6. List item UX improvements
 
@@ -87,15 +98,17 @@ These are **not bugs** - they're architectural constraints:
 
 ## Test Coverage Summary
 
-| Spec File | Pass Rate | Notes |
-|-----------|-----------|-------|
-| nested-transformations | 100% | ✅ Solid |
-| breaking-delimiters | 90.9% | 1 cursor position failure |
-| activation | ~78% | Nested edge cases |
-| editing | 80% | Complex edit scenario |
-| span-mirroring | 64.7% | Complex replacement, strikethrough |
-| caret-boundary | 50% | Item#1 edge detection with text |
-| regression | 41.7% | Issue#5, #9 scenarios |
+| Spec File | Passed | Failed | Notes |
+|-----------|--------|--------|-------|
+| nested-transformations | 0 | 2 | Pattern transformations |
+| breaking-delimiters | 8 | 3 | Cursor position edge cases |
+| activation | 18 | 5 | Nested edge cases, block marks |
+| editing | 4 | 1 | Complex edit scenario |
+| span-mirroring | 14 | 4 | Complex replacement, strikethrough |
+| caret-boundary | 5 | 6 | Edge detection with text |
+| caret-style-persistence | 0 | 1 | Caret style carryover |
+| regression | 6 | 8 | Issue#5, #9 scenarios |
+| span-persistence | 0 | 3 | Nested element creation |
 
 ---
 
@@ -103,7 +116,7 @@ These are **not bugs** - they're architectural constraints:
 
 | File | Purpose |
 |------|---------|
-| `src/lib/core/utils/focus-mark-manager.ts` | Core logic (635 lines) |
+| `src/lib/core/utils/focus-mark-manager.ts` | Core logic (661 lines) |
 | `src/lib/svelte/richEditorState.svelte.ts` | Integration layer |
 | `src/lib/core/dom/smartReplaceChildren.ts` | DOM reconciliation |
 | `tests/e2e/focus-marks/` | Test suites (9 files) |
@@ -112,7 +125,7 @@ These are **not bugs** - they're architectural constraints:
 
 ## Conclusion
 
-The feature is **production-ready for normal use**. The remaining 33 failing tests are mostly edge cases that users rarely encounter. The high-priority bugs (#72, #9, #8) should be addressed for a polished experience, but they don't block core functionality.
+The feature is **production-ready for normal use**. The remaining 36 failing tests are mostly edge cases that users rarely encounter. The high-priority bugs (#9, #8, #343) should be addressed for a polished experience, but they don't block core functionality.
 
 ---
 

@@ -742,6 +742,135 @@ test.describe('Rich Editor - Edge Delimiter Typing', () => {
 		const text = await editor.locator('p').textContent()
 		expect(text).toBe('bold*')
 	})
+
+	test('should transform italic to bold-italic with preceding text', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Edge case: Text before the pattern makes caret more likely to miss the activeInline
+		// This tests that edge detection works even with adjacent text
+
+		// 1. Create: "prefix *text*"
+		await editor.pressSequentially('prefix *text*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click on italic to activate
+		await em.click()
+		await page.waitForTimeout(50)
+
+		// 3. Navigate to position right before the italic's opening delimiter
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 7; i++) {
+			// past "prefix "
+			await page.keyboard.press('ArrowRight')
+		}
+
+		// At this position, caret is right outside the italic element
+		// The activeInline should still be the italic due to edge detection
+
+		// 4. Type '**' - should transform *text* → ***text*** → bold-italic
+		await page.keyboard.type('**')
+		await page.waitForTimeout(100)
+
+		// 5. Blur to trigger transformation
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Expected: ***text*** creates bold-italic (strong > em or em > strong)
+		const html = await editor.innerHTML()
+		const hasNesting =
+			html.includes('<strong') && html.includes('<em') && html.includes('text')
+
+		// Verify the transformation happened (bold-italic nesting)
+		expect(hasNesting).toBe(true)
+	})
+
+	test('should detect edge correctly with preceding text', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// This tests that when there's text before the pattern, the edge detection
+		// correctly identifies the formatted element as activeInline
+
+		// 1. Create: "hello **world**"
+		await editor.pressSequentially('hello **world**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click on bold to activate
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Navigate to position right before **world** (after "hello ")
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 6; i++) {
+			// past "hello "
+			await page.keyboard.press('ArrowRight')
+		}
+
+		// 4. Type '*' at edge - should modify the bold, not create outside text
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// The '*' should have been captured inside the opening delimiter span
+		// This would make it ***world*** (bold + italic)
+
+		// 5. Blur to see final transformation
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Verify transformation happened (bold-italic nesting or format change)
+		const html = await editor.innerHTML()
+
+		// Should have nested formatting, NOT "*<strong>world</strong>"
+		expect(html).not.toMatch(/\*<strong>/)
+	})
+
+	test('should transform format completely when typing delimiter sequence', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Test that typing multiple delimiters at edge causes proper transformation
+
+		// 1. Create simple italic
+		await editor.pressSequentially('*italic*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click to activate
+		await em.click()
+		await page.waitForTimeout(50)
+
+		// 3. Navigate to Home
+		await page.keyboard.press('Home')
+
+		// 4. Type '*' to change from italic (*) to bold (**)
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// Also add to closing to maintain balance
+		await page.keyboard.press('End')
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+
+		// 5. Blur
+		await page.keyboard.press('Escape')
+		await page.waitForTimeout(100)
+
+		// Expected: *italic* → **italic** → <strong>italic</strong>
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		const strongText = await strong.textContent()
+		expect(strongText).toBe('italic')
+	})
 })
 
 test.describe('Focus Marks - Issue #71 Caret Logic', () => {

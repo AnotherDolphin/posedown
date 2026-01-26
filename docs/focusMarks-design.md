@@ -48,9 +48,10 @@ FocusMarkManager (Core Implementation)
 │   └── skipNextFocusMarks - Suppress marks after transformations
 │
 └── Internal Methods:
-    ├── checkSpanStatus() - Detect modifications, mirror edits
+    ├── checkAndMirrorSpans() - Detect modifications, mirror edits, track invalid changes
     ├── handleNestedPatterns() - Process patterns inside active elements
     ├── handleBreakingDelimiters() - Handle delimiter typed in middle
+    ├── handleInvalidSpanChanges() - Handle edits that invalidate the pattern
     ├── isAtEdge() - Check if cursor at edge of focus mark spans
     ├── wouldFormValidDelimiter() - Validate potential delimiter upgrade
     ├── findFocusedInline/Block() - Find focused elements (with edge detection)
@@ -93,7 +94,7 @@ User types **bold**
 User changes ** to * in focus mark span
   → onInput() fires
   → handleActiveInline(selection)
-  → checkSpanStatus() detects modification
+  → checkAndMirrorSpans() detects modification
   → Mirrors edit to paired span
   → unwrapAndReparse() converts to markdown and back
   → smartReplaceChildren() replaces DOM
@@ -109,7 +110,7 @@ User types * at edge of focus mark span
   → wouldFormValidDelimiter() checks if * + * = ** is valid
   → Insert typed char into target span
   → handleActiveInline() detects modification
-  → checkSpanStatus() mirrors to paired span
+  → checkAndMirrorSpans() mirrors to paired span
   → unwrapAndReparse() transforms *italic* → **bold**
 ```
 
@@ -122,6 +123,17 @@ User types * in middle of *italic* → *ita*lic*
   → unwrapAndReparse() to markdown
   → Pattern detection finds: *ita*
   → Result: <em>ita</em>lic*
+```
+
+#### 6. Invalid Span Changes (Issue #75)
+```
+User types inside delimiter spans making pattern invalid
+  → onInput() fires
+  → handleActiveInline(selection)
+  → checkAndMirrorSpans() returns { invalidChanges: true }
+  → handleInvalidSpanChanges() triggers reparse
+  → unwrapAndReparse() converts to plain text or re-matches
+  → Focus marks stay visible during editing
 ```
 
 ## Design Decisions
@@ -178,7 +190,7 @@ const parts = markdown.split(textContent) // ["**", "**"]
 - Can delete delimiters to unwrap
 - Markdown-first philosophy
 
-**How:** Span modifications detected by `checkSpanStatus()`, mirrored to pair, then `unwrapAndReparse()`
+**How:** Span modifications detected by `checkAndMirrorSpans()`, mirrored to pair, then `unwrapAndReparse()`
 
 ### 6. Maximum Two Active Marks
 
