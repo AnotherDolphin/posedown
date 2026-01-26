@@ -11,7 +11,7 @@ import { isBlockTagName } from './block-marks'
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
-import { setCaretAtEnd } from '.'
+import { setCaretAtEnd } from './selection'
 
 /**
  * Class name for injected mark spans
@@ -398,25 +398,30 @@ export class FocusMarkManager {
 	 *
 	 * @returns Status flags indicating if spans were disconnected or modified
 	 */
-	private checkSpanStatus(): { spanDisconnected: boolean; spanModified: boolean } {
+	private checkAndMirrorSpans() {
 		const spans = this.inlineSpanRefs
-		const spanDisconnected = spans.some(span => !span.isConnected)
-		const spanModified = spans.some(span => span.textContent !== this.activeDelimiter)
+		const someDisconnected = spans.some(span => !span.isConnected)
+		const someModified = spans.some(span => span.textContent !== this.activeDelimiter)
+		let [spansDisconnected, spansMirrored] = [false, false]
 
-		if (spanDisconnected) {
+		if (someDisconnected) {
 			spans.forEach(span => span.remove())
 			this.activeDelimiter = ''
-		} else if (spanModified) {
+			spansDisconnected = true
+		} else if (someModified) {
 			const editedSpan = spans.find(span => span.textContent !== this.activeDelimiter)
 			const mirrorSpan = spans.find(span => span !== editedSpan)
+			const shouldMirror =
+				mirrorSpan && editedSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)
 
-			if (editedSpan && mirrorSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)) {
+			if (shouldMirror) {
 				mirrorSpan.textContent = editedSpan.textContent
 				this.activeDelimiter = editedSpan.textContent || ''
+				spansMirrored = true
 			}
 		}
-
-		return { spanDisconnected, spanModified }
+		const invalid = someModified && !spansMirrored
+		return { spansDisconnected, spansMirrored, invalidChanges: invalid }
 	}
 
 	/**
@@ -487,17 +492,10 @@ export class FocusMarkManager {
 	public handleActiveInlineChange(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
-		// Only enter focus mark edit flow if:
-		// 1. A span was modified (delimiter edited), OR
-		// 2. A span was disconnected (deleted), OR
-		// Do NOT trigger just because cursor is inside activeInline (user typing regular content)
-		// ALSO, sometimes activeInline.contains(selection.anchorNode) is false if editing spans at edges
-
 		// 1. Check span status and handle mirroring
-		const { spanModified, spanDisconnected } = this.checkSpanStatus()
-
+		const { spansMirrored, spansDisconnected, invalidChanges } = this.checkAndMirrorSpans()
 		// 2. If spans modified/disconnected, unwrap and reparse
-		if (spanModified || spanDisconnected) {
+		if (spansMirrored || spansDisconnected || invalidChanges) {
 			// Skip fix if caret wasn't at end of end span
 			const skipCorrection = this.isAtEdge(selection) !== 'after-closing'
 			this.unwrapAndReparse(selection, skipCorrection)
@@ -536,8 +534,9 @@ export class FocusMarkManager {
 	 * Handle typing delimiter characters at the edges of focus mark spans.
 	 * Intercepts input to upgrade delimiters (e.g., * → ** for italic → bold).
 	 *
-	 * Handles three edge positions:
+	 * Handles four edge positions:
 	 * - before-opening: prepend to opening span
+	 * - after-opening: append to opening span
 	 * - before-closing: prepend to closing span (issue#73)
 	 * - after-closing: append to closing span
 	 *
@@ -548,11 +547,32 @@ export class FocusMarkManager {
 	public handleMarkSpanEdges(selection: Selection, typedChar: string): boolean {
 		const edgePosition = this.isAtEdge(selection)
 		if (!edgePosition) return false
-		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
-		const targetSpan = edgePosition === 'before-opening' ? startSpan : endSpan
-		// Insert at correct position (prepend for before-opening/before-closing, append for after-closing)
+
+		// Handle after-opening: if invalid delimiter, insert into content instead of span
+
+		if (edgePosition === 'after-opening' && !this.wouldFormValidDelimiter(edgePosition, typedChar)) {
+			// Insert char into content after startSpan
+			const contentNode = startSpan.nextSibling
+			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
+				contentNode.textContent = typedChar + (contentNode.textContent || '')
+			} else {
+				// No text node after startSpan, create one
+				const textNode = document.createTextNode(typedChar)
+				startSpan.after(textNode)
+			}
+			// Move caret after inserted char
+			const targetNode = startSpan.nextSibling as Text
+			setCaretAtEnd(targetNode, selection)
+			return true
+		}
+
+		if (!this.wouldFormValidDelimiter(edgePosition, typedChar)) return false
+
+		const targetSpan =
+			edgePosition === 'before-opening' || edgePosition === 'after-opening' ? startSpan : endSpan
+		// Insert at correct position (prepend for before-opening/before-closing, append for after-opening/after-closing)
 		if (edgePosition === 'before-opening' || edgePosition === 'before-closing') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
 			// side effect (design/bug): the text is placed into the span infront of the caret; caret doesn't move
@@ -578,17 +598,20 @@ export class FocusMarkManager {
 	 *
 	 * Returns:
 	 * - 'before-opening': cursor is before/at start of opening delimiter
+	 * - 'after-opening': cursor is after/at end of opening delimiter
 	 * - 'before-closing': cursor is at the boundary before the closing delimiter (issue#73)
 	 * - 'after-closing': cursor is after/at end of closing delimiter
 	 *
-	 * Detects three cases:
+	 * Detects cases:
 	 * 1. Cursor in adjacent text node OUTSIDE activeInline
 	 * 2. Cursor INSIDE the focus mark spans at their edges
+	 * 2b. Cursor at END of opening span (after-opening)
 	 * 3. Cursor in text content INSIDE activeInline, at boundary with endSpan
-	 *
-	 *  after-opening is not handled because caret correctly focuses preceding node by default
+	 * 3b. Cursor at boundary after startSpan (after-opening)
 	 */
-	private isAtEdge(selection: Selection): 'before-opening' | 'before-closing' | 'after-closing' | null {
+	private isAtEdge(
+		selection: Selection
+	): 'before-opening' | 'after-opening' | 'before-closing' | 'after-closing' | null {
 		if (!this.activeInline || !selection.anchorNode) return null
 		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
 
@@ -608,6 +631,10 @@ export class FocusMarkManager {
 		if (startSpan && textNode.parentNode === startSpan && offset === 0) {
 			return 'before-opening'
 		}
+		// Case 2b: Cursor at END of opening span (after-opening)
+		if (startSpan && textNode.parentNode === startSpan && offset === textNode.textContent?.length) {
+			return 'after-opening'
+		}
 		if (endSpan && textNode.parentNode === endSpan && offset === textNode.textContent?.length) {
 			return 'after-closing'
 		}
@@ -618,6 +645,10 @@ export class FocusMarkManager {
 		if (offset === textNode.textContent?.length && textNode.nextSibling === endSpan) {
 			return 'before-closing'
 		}
+		// Case 3b: Cursor at boundary after startSpan (after-opening)
+		if (offset === 0 && textNode.previousSibling === startSpan) {
+			return 'after-opening'
+		}
 
 		return null
 	}
@@ -626,13 +657,13 @@ export class FocusMarkManager {
 	 * Check if typing a character at the given edge would form a valid delimiter.
 	 */
 	private wouldFormValidDelimiter(
-		edgePosition: 'before-opening' | 'before-closing' | 'after-closing',
+		edgePosition: 'before-opening' | 'after-opening' | 'before-closing' | 'after-closing',
 		typedChar: string
 	): boolean {
 		if (!this.activeDelimiter) return false
 
 		const potentialDelimiter =
-			edgePosition === 'after-closing'
+			edgePosition === 'after-opening' || edgePosition === 'after-closing'
 				? this.activeDelimiter + typedChar
 				: typedChar + this.activeDelimiter
 

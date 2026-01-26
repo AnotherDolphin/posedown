@@ -18,7 +18,9 @@
   
   > onInput system needs normal overall pattern checks even if nothing in the activeInline prompts update (why?)
 
-- Issue#9: spans don't unwrap as simple text when delimiters become invalid (+check)
+- Issue#9: spans don't unwrap as simple text when delimiters become invalid
+  > correct reparsing and delimiter unfocusing/focusing happens; this may cause
+  > repetitive nesting of identical formats but it works correct semantically
 
 - issue#7: typing delimiters (like * => **) doesn't update format if the caret was right after/before the opening/closing delimter. This is an issue of being typed inside vs right beside a span ✅
   > also, typing after the closing mark probably escaped with marks system
@@ -29,7 +31,7 @@
 - issue#81: when focus marks appear due to caret from the right to the end of formattedElement, the caret must be outside and not inside the spans (caret at HOME behaves correctly due to edge sibling detection). ✅
   > when a user focuses the approches the right side of the element, from the right, by keyboard (mouse click works correctly) the caret goes inside `**bold|**` instead of correctly outside `**bold**|`
 
-- issue#12: selecting multiple dels and typing doesn't mirror 
+- ~~issue#12: selecting multiple dels and typing doesn't mirror~~ (works actually)
 
 - issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:70](/src/lib/core/transforms/transform.ts#L70)
 
@@ -42,9 +44,17 @@
 
 - issue#71.1: adding a * at `*make bold*|` mirrors and transforms correctly, but moves the caret inside to the start of the end span ✅ 
 
-- issue#72: typing between delimiters causes odd behavior, caret moves to end, separeated delimiter disappears
+- ~~issue#72: typing between delimiters causes odd behavior, caret moves to end, separeated delimiter disappears~~
 
 - issue#73: typing a * to the inside of end span like `*make bold|*` isn't triggered as a focus span edit ✅
+
+- issue#74: emptying a focused element and then typing sometimes repeats/doubles both delimiters (nested tags in dom and also a random <format> tag) ✅
+  > reason: typing after first span doesn't trigger marks escape system for formatted elements
+  > fix: handle `after-opening` as in span-edge editing cases
+
+- issue#75: typing between delimiters is unpredictable esp if empty and the focus marks get hidden if caret is in the middle as pattern matches ✅
+  > reason: invalid delimiter edits didn't trigger a porper reparse
+  > added `invalidChanges` by refactoring `checkAndMirrorSpans`; to be handled as a span edit and not a nestedPattern in handleActiveInlineChange
 
 
 ### later
