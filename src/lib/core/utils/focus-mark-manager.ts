@@ -30,8 +30,10 @@ export const FOCUS_MARK_CLASS = 'pd-focus-mark'
 export class FocusMarkManager {
 	activeInline: HTMLElement | null = null
 	activeBlock: HTMLElement | null = null
-	activeDelimiter: string | null = null
+	activeInlineDelimiter: string | null = null
+	activeBlockDelimiter: string | null = null
 	inlineSpanRefs: Array<HTMLElement> = []
+	blockSpanRefs: Array<HTMLElement> = []
 	skipNextFocusMarks = false
 	private editableRef: HTMLElement | null = null // should this be even here
 
@@ -197,7 +199,8 @@ export class FocusMarkManager {
 			this.activeBlock = null
 		}
 
-		this.activeDelimiter = null
+		this.activeInlineDelimiter = null
+		this.activeBlockDelimiter = null
 	}
 
 	/**
@@ -235,7 +238,7 @@ export class FocusMarkManager {
 		// correct to end (only during manual navigation, not reprocessing)
 		if (atEnd && !skipCaretCorrection) setCaretAtEnd(element, selection!)
 
-		this.activeDelimiter = delimiters.start
+		this.activeInlineDelimiter = delimiters.start
 	}
 
 	/**
@@ -255,7 +258,9 @@ export class FocusMarkManager {
 		// Create prefix span
 		const prefixSpan = this.createMarkSpan(delimiters.start)
 
-		// todo: refs state for block spans?
+		// Store reference and delimiter
+		this.blockSpanRefs = [prefixSpan]
+		this.activeBlockDelimiter = delimiters.start
 
 		// Inject at start of block
 		element.prepend(prefixSpan)
@@ -272,7 +277,7 @@ export class FocusMarkManager {
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
 		marks.forEach(mark => mark.remove())
 		this.inlineSpanRefs = []
-		// this.blockSpanRefs = []
+		this.blockSpanRefs = []
 		// WeakMap entries auto-cleaned when spans garbage collected
 
 		// Merge fragmented text nodes back together
@@ -361,24 +366,27 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Unwraps the active inline element and re-parses for new patterns.
+	 * Unwraps the specified formatted element and re-parses for new patterns.
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
 	 *
 	 * @param selection - Current selection for caret restoration
+	 * @param target - The element to unwrap and reparse
 	 * @param skipCaretCorrection - don't correct caret to end on reinjection
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapAndReparse(selection: Selection, skipCaretCorrection = false): boolean {
-		const formattedElement = this.activeInline
-		if (!formattedElement) return false
+	public unwrapAndReparse(
+		selection: Selection,
+		target: HTMLElement,
+		skipCaretCorrection = false
+	): boolean {
 
-		const parentBlock = formattedElement.parentElement
+		const parentBlock = target.parentElement
 		if (!parentBlock) return false
 
-		const newElementFrag = reparse(formattedElement, true)
+		const newElementFrag = reparse(target, true)
 		const newBlockFrag = buildBlockFragmentWithReplacement(
 			parentBlock,
-			formattedElement,
+			target,
 			newElementFrag
 		)
 
@@ -401,22 +409,22 @@ export class FocusMarkManager {
 	private checkAndMirrorSpans() {
 		const spans = this.inlineSpanRefs
 		const someDisconnected = spans.some(span => !span.isConnected)
-		const someModified = spans.some(span => span.textContent !== this.activeDelimiter)
+		const someModified = spans.some(span => span.textContent !== this.activeInlineDelimiter)
 		let [spansDisconnected, spansMirrored] = [false, false]
 
 		if (someDisconnected) {
 			spans.forEach(span => span.remove())
-			this.activeDelimiter = ''
+			this.activeInlineDelimiter = ''
 			spansDisconnected = true
 		} else if (someModified) {
-			const editedSpan = spans.find(span => span.textContent !== this.activeDelimiter)
+			const editedSpan = spans.find(span => span.textContent !== this.activeInlineDelimiter)
 			const mirrorSpan = spans.find(span => span !== editedSpan)
 			const shouldMirror =
 				mirrorSpan && editedSpan && SUPPORTED_INLINE_DELIMITERS.has(editedSpan.textContent)
 
 			if (shouldMirror) {
 				mirrorSpan.textContent = editedSpan.textContent
-				this.activeDelimiter = editedSpan.textContent || ''
+				this.activeInlineDelimiter = editedSpan.textContent || ''
 				spansMirrored = true
 			}
 		}
@@ -473,7 +481,7 @@ export class FocusMarkManager {
 		if (!hasBreakingChange) return false
 
 		// Find new best pattern
-		this.unwrapAndReparse(selection)
+		this.unwrapAndReparse(selection, this.activeInline)
 		// Unfocus to skip showing marks (like regular typing)
 		this.skipNextFocusMarks = true
 		this.unfocus()
@@ -499,7 +507,7 @@ export class FocusMarkManager {
 			// Skip fix if caret wasn't at end of end span
 			const edge = this.isAtEdge(selection)
 			const skipCorrection = !(edge?.position === 'after' && edge?.target === 'close')
-			this.unwrapAndReparse(selection, skipCorrection)
+			this.unwrapAndReparse(selection, this.activeInline, skipCorrection)
 			this.update(selection, this.editableRef!)
 			return true
 		}
@@ -516,6 +524,19 @@ export class FocusMarkManager {
 			return true
 		}
 
+		return false
+	}
+
+	public handleBlockChanges(selection: Selection): boolean {
+		if (!this.activeBlock) return false
+		// debugger
+		if (
+			this.blockSpanRefs.some(span => !span.isConnected) ||
+			this.blockSpanRefs.some(span => span.textContent !== this.activeBlockDelimiter)
+		)
+			{
+				return this.unwrapAndReparse(selection, this.activeBlock)
+			}
 		return false
 	}
 
@@ -605,9 +626,13 @@ export class FocusMarkManager {
 
 		// Determine target span from context
 		const target: 'open' | 'close' | null =
-			parent === startSpan || (atEnd && next === this.activeInline) || (atStart && prev === startSpan)
+			parent === startSpan ||
+			(atEnd && next === this.activeInline) ||
+			(atStart && prev === startSpan)
 				? 'open'
-				: parent === endSpan || (atStart && prev === this.activeInline) || (atEnd && next === endSpan)
+				: parent === endSpan ||
+					  (atStart && prev === this.activeInline) ||
+					  (atEnd && next === endSpan)
 					? 'close'
 					: null
 
@@ -623,15 +648,20 @@ export class FocusMarkManager {
 	 * Check if typing a character at the given edge would form a valid delimiter.
 	 */
 	private wouldFormValidDelimiter(position: 'before' | 'after', typedChar: string): boolean {
-		if (!this.activeDelimiter) return false
+		if (!this.activeInlineDelimiter) return false
 
 		const potentialDelimiter =
 			position === 'after'
-				? this.activeDelimiter + typedChar
-				: typedChar + this.activeDelimiter
+				? this.activeInlineDelimiter + typedChar
+				: typedChar + this.activeInlineDelimiter
 
 		return SUPPORTED_INLINE_DELIMITERS.has(potentialDelimiter)
 	}
+
+	// ===================================== BLOCK FOCUS MARKS ===================================
+	// handleBlockChanges(selection: Selection): boolean {
+	// 	if (!this.activeBlock) return false
+	// }
 }
 
 /**

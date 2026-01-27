@@ -187,10 +187,17 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return false
 
+		if(this.focusMarkManager.handleBlockChanges(selection)) {
+			this.history.push(this.editableRef)
+			return
+		}
+
 		if (this.focusMarkManager.handleActiveInlineChange(selection)) {
 			this.history.push(this.editableRef)
 			return
 		}
+
+		
 
 		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
 
