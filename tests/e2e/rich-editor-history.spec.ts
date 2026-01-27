@@ -492,6 +492,175 @@ test.describe('Rich Editor History - Undo/Redo System', () => {
 		})
 	})
 
+	test.describe('Initial History Entry - Caret Position', () => {
+		test('full undo should restore caret to initial click position, not start of content', async ({
+			page
+		}) => {
+			await page.goto(EDITOR_URL)
+			const editor = page.locator('[role="article"][contenteditable="true"]')
+
+			// Set up content by directly setting innerHTML (simulates loading existing content)
+			await editor.evaluate((el) => {
+				el.innerHTML = '<p>Hello World</p>'
+			})
+
+			// Click at a specific position in the middle (after "Hello ")
+			await page.evaluate(() => {
+				const editor = document.querySelector('[role="article"][contenteditable="true"]')
+				const textNode = editor?.querySelector('p')?.firstChild
+				if (textNode) {
+					const range = document.createRange()
+					range.setStart(textNode, 6) // After "Hello "
+					range.collapse(true)
+					const sel = window.getSelection()
+					sel?.removeAllRanges()
+					sel?.addRange(range)
+					;(editor as HTMLElement)?.focus()
+				}
+			})
+			await page.waitForTimeout(200)
+
+			// Verify initial caret position
+			const initialOffset = await page.evaluate(() => {
+				const sel = window.getSelection()
+				return sel?.anchorOffset ?? -1
+			})
+			expect(initialOffset).toBe(6)
+
+			// Type some text
+			await page.keyboard.type('Beautiful ')
+			await page.waitForTimeout(600)
+
+			// Verify text was inserted at correct position
+			await expect(editor).toContainText('Hello Beautiful World')
+
+			// Undo all the way back to initial state
+			for (let i = 0; i < 5; i++) {
+				await page.keyboard.press('Control+z')
+				await page.waitForTimeout(200)
+			}
+
+			// Get final caret offset
+			const finalOffset = await page.evaluate(() => {
+				const sel = window.getSelection()
+				return sel?.anchorOffset ?? -1
+			})
+
+			// Caret should be at the initial click position (6), NOT at 0
+			expect(finalOffset).toBe(6)
+		})
+
+		test('undo should restore caret to deletion location after typing elsewhere', async ({
+			page
+		}) => {
+			await page.goto(EDITOR_URL)
+			const editor = page.locator('[role="article"][contenteditable="true"]')
+
+			// Set up content
+			await editor.evaluate((el) => {
+				el.innerHTML = '<p>Hello World</p>'
+			})
+
+			// Click at position 5 (after "Hello") and delete a character
+			await page.evaluate(() => {
+				const editor = document.querySelector('[role="article"][contenteditable="true"]')
+				const textNode = editor?.querySelector('p')?.firstChild
+				if (textNode) {
+					const range = document.createRange()
+					range.setStart(textNode, 5) // After "Hello"
+					range.collapse(true)
+					const sel = window.getSelection()
+					sel?.removeAllRanges()
+					sel?.addRange(range)
+					;(editor as HTMLElement)?.focus()
+				}
+			})
+			await page.waitForTimeout(200)
+
+			// Delete the 'o' with backspace
+			await page.keyboard.press('Backspace')
+			await page.waitForTimeout(600)
+
+			// Verify deletion
+			await expect(editor).toContainText('Hell World')
+
+			// Now click at end and type something
+			await page.keyboard.press('End')
+			await page.waitForTimeout(100)
+			await page.keyboard.type(' there')
+			await page.waitForTimeout(600)
+
+			await expect(editor).toContainText('Hell World there')
+
+			// Undo the typing - should go back to "Hell World" with caret at end
+			await page.keyboard.press('Control+z')
+			await page.waitForTimeout(200)
+
+			// Undo the deletion - should restore 'o' and caret should be at deletion point (position 5)
+			await page.keyboard.press('Control+z')
+			await page.waitForTimeout(200)
+
+			await expect(editor).toContainText('Hello World')
+
+			// Verify caret is at the deletion location (position 5), not at end
+			const caretOffset = await page.evaluate(() => {
+				const sel = window.getSelection()
+				return sel?.anchorOffset ?? -1
+			})
+
+			// Should be around position 5 (where deletion happened), not at end (11)
+			expect(caretOffset).toBeLessThanOrEqual(6)
+			expect(caretOffset).toBeGreaterThanOrEqual(4)
+		})
+
+		test('initial history entry should capture correct caret on first focus', async ({ page }) => {
+			await page.goto(EDITOR_URL)
+			const editor = page.locator('[role="article"][contenteditable="true"]')
+
+			// Clear and set up content without focusing
+			await editor.evaluate((el) => {
+				el.innerHTML = '<p>Test content here</p>'
+			})
+
+			// Click at a specific position (use evaluate to click at offset)
+			await page.evaluate(() => {
+				const editor = document.querySelector('[role="article"][contenteditable="true"]')
+				const textNode = editor?.querySelector('p')?.firstChild
+				if (textNode) {
+					const range = document.createRange()
+					range.setStart(textNode, 5) // After "Test "
+					range.collapse(true)
+					const sel = window.getSelection()
+					sel?.removeAllRanges()
+					sel?.addRange(range)
+					;(editor as HTMLElement)?.focus()
+				}
+			})
+			await page.waitForTimeout(200)
+
+			// Type something
+			await page.keyboard.type('NEW ')
+			await page.waitForTimeout(600)
+
+			await expect(editor).toContainText('Test NEW content here')
+
+			// Undo back to initial
+			await page.keyboard.press('Control+z')
+			await page.waitForTimeout(200)
+			await page.keyboard.press('Control+z')
+			await page.waitForTimeout(200)
+
+			// Check caret is not at position 0
+			const caretOffset = await page.evaluate(() => {
+				const sel = window.getSelection()
+				return sel?.anchorOffset ?? -1
+			})
+
+			// Should be around position 5 (after "Test "), not 0
+			expect(caretOffset).toBeGreaterThanOrEqual(4)
+		})
+	})
+
 	test.describe('Edge Cases', () => {
 		test('should handle undo when no history exists', async ({ page }) => {
 			const editor = page.locator('[role="article"][contenteditable="true"]')

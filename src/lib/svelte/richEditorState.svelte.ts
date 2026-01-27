@@ -46,8 +46,9 @@ export class RichEditorState {
 	lastSyncedAt = Date.now()
 	private syncTimer: ReturnType<typeof setTimeout> | null = null
 	marks: Array<Element | Node> | null = $state(null) // only a state for debugging with $inspect
-	private history = new EditorHistory({ debug: false })
+	private history = new EditorHistory({ debug: true })
 	private focusMarkManager = new FocusMarkManager()
+	private hasInitialHistoryEntry = false
 
 	constructor(markdown: string) {
 		this.rawMd = markdown
@@ -67,9 +68,7 @@ export class RichEditorState {
 			// ciritical backup override if style missing
 			this.editableRef.style.whiteSpace = 'break-spaces'
 
-			// Save initial state to history
-			this.history.push(this.editableRef)
-
+			this.editableRef.addEventListener('focus', this.onFocus)
 			this.editableRef.addEventListener('blur', this.onBlur)
 			this.editableRef.addEventListener('input', this.onInput)
 			this.editableRef.addEventListener('paste', this.onPaste)
@@ -83,6 +82,7 @@ export class RichEditorState {
 			// })
 			return () => {
 				// observer()
+				this.editableRef?.removeEventListener('focus', this.onFocus)
 				this.editableRef?.removeEventListener('blur', this.onBlur)
 				this.editableRef?.removeEventListener('paste', this.onPaste)
 				this.editableRef?.removeEventListener('input', this.onInput)
@@ -403,8 +403,21 @@ export class RichEditorState {
 
 	// ==================================================
 
+	private onFocus = () => {
+		// Save initial state on first focus so undo returns to correct caret position
+		// Use setTimeout(0) to run after mouseup finalizes caret position
+		if (!this.hasInitialHistoryEntry && this.editableRef) {
+			setTimeout(() => {
+				if (this.editableRef && !this.hasInitialHistoryEntry) {
+					this.history.push(this.editableRef)
+					this.hasInitialHistoryEntry = true
+				}
+			}, 0)
+		}
+	}
+
 	private onBlur = () => {
-    this.focusMarkManager.unfocus()
+		this.focusMarkManager.unfocus()
 		if (this.isDirty) this.syncToTrees()
 	}
 
