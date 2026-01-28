@@ -1,6 +1,6 @@
 import { markdownToDomFragment } from '../transforms/ast-utils'
 import { isBlockTagName } from './block-marks'
-import { FOCUS_MARK_CLASS } from './focus-mark-manager'
+import { FOCUS_MARK_CLASS } from '../focus/utils'
 import { findFirstMarkdownMatch } from './inline-patterns'
 import {
 	handleEnterInListItem,

@@ -11,12 +11,15 @@ import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
 import { setCaretAtEnd } from './selection'
-import { extractInlineMarks, extractBlockMarks } from '../focus/utils'
-
-/**
- * Class name for injected mark spans
- */
-export const FOCUS_MARK_CLASS = 'pd-focus-mark'
+import {
+	extractInlineMarks,
+	extractBlockMarks,
+	FOCUS_MARK_CLASS,
+	createMarkSpan,
+	atEdgeOfFormatted,
+	getSpanlessClone,
+	wouldFormValidDelimiter
+} from '../focus/utils'
 
 /**
  * Manages focus marks - dynamic delimiter injection for markdown formatting.
@@ -86,29 +89,6 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Check if cursor is at the edge of a text node adjacent to a formatted element.
-	 * @returns The adjacent formatted element if found, null otherwise
-	 */
-	private checkTextNodeEdges(textNode: Text, offset: number): HTMLElement | null {
-		// At start of text node - check previous sibling
-		if (offset === 0 && textNode.previousSibling?.nodeType === Node.ELEMENT_NODE) {
-			const el = textNode.previousSibling as HTMLElement
-			if (isInlineFormattedElement(el.tagName)) return el
-		}
-
-		// At end of text node - check next sibling
-		if (
-			offset === textNode.textContent?.length &&
-			textNode.nextSibling?.nodeType === Node.ELEMENT_NODE
-		) {
-			const el = textNode.nextSibling as HTMLElement
-			if (isInlineFormattedElement(el.tagName)) return el
-		}
-
-		return null
-	}
-
-	/**
 	 * Find the closest inline formatted parent element containing the cursor.
 	 * Only considers INLINE_FORMATTED_TAGS (strong, em, code, s, del).
 	 *
@@ -130,7 +110,7 @@ export class FocusMarkManager {
 		// If inside formatted element AND in text node, check if cursor at edge with sibling
 		// (issue#34 fix: prioritize sibling over parent)
 		if (insideFormatted && anchorNode.nodeType === Node.TEXT_NODE) {
-			const edgeSibling = this.checkTextNodeEdges(anchorNode as Text, offset)
+			const edgeSibling = atEdgeOfFormatted(anchorNode as Text, offset)
 			if (edgeSibling) return edgeSibling
 		}
 
@@ -140,7 +120,7 @@ export class FocusMarkManager {
 
 		// Case A: Cursor in text node - check edge siblings
 		if (anchorNode.nodeType === Node.TEXT_NODE) {
-			const edgeSibling = this.checkTextNodeEdges(anchorNode as Text, offset)
+			const edgeSibling = atEdgeOfFormatted(anchorNode as Text, offset)
 			if (edgeSibling) return edgeSibling
 		}
 
@@ -220,8 +200,8 @@ export class FocusMarkManager {
 		if (!delimiters) return
 
 		// Create mark spans
-		const startSpan = this.createMarkSpan(delimiters.start)
-		const endSpan = this.createMarkSpan(delimiters.end)
+		const startSpan = createMarkSpan(delimiters.start)
+		const endSpan = createMarkSpan(delimiters.end)
 
 		this.inlineSpanRefs = [startSpan, endSpan]
 
@@ -256,7 +236,7 @@ export class FocusMarkManager {
 		if (!delimiters) return
 
 		// Create prefix span
-		const prefixSpan = this.createMarkSpan(delimiters.start)
+		const prefixSpan = createMarkSpan(delimiters.start)
 
 		// Store reference and delimiter
 		this.blockSpanRefs = [prefixSpan]
@@ -282,19 +262,6 @@ export class FocusMarkManager {
 
 		// Merge fragmented text nodes back together
 		element.normalize()
-	}
-
-	/**
-	 * Create a mark span element with proper class and styling attributes.
-	 * Spans inherit contentEditable from parent, so users can modify delimiters to unwrap formatting.
-	 */
-	private createMarkSpan(text: string): HTMLSpanElement {
-		const span = document.createElement('span')
-		span.className = FOCUS_MARK_CLASS
-		span.textContent = text
-		// Note: contentEditable inherited from parent editor div
-
-		return span
 	}
 
 	/**
@@ -421,7 +388,7 @@ export class FocusMarkManager {
 	private handleNestedPatterns(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
-		const hasInlinePattern = findFirstMarkdownMatch(this.getSpanlessClone()?.textContent || '')
+		const hasInlinePattern = findFirstMarkdownMatch(getSpanlessClone(this.activeInline)?.textContent || '')
 		if (!hasInlinePattern) return false
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
@@ -522,16 +489,6 @@ export class FocusMarkManager {
 		return false
 	}
 
-	/**
-	 * @returns get a clone for activeInline without spans
-	 */
-	getSpanlessClone = () => {
-		if (!this.activeInline) return null
-		const clone = this.activeInline.cloneNode(true) as HTMLElement
-		clone.querySelectorAll(`.${FOCUS_MARK_CLASS}`).forEach(span => span.remove())
-		return clone
-	}
-
 	// ============================ EDGE DELIMITER HANDLING ===================================
 
 	/**
@@ -549,7 +506,12 @@ export class FocusMarkManager {
 		const { position, target } = edge
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = target === 'open' ? startSpan : endSpan
-		const validDelimiter = this.wouldFormValidDelimiter(position, typedChar)
+		const validDelimiter = wouldFormValidDelimiter(
+			this.activeInlineDelimiter || '',
+			position,
+			typedChar,
+			SUPPORTED_INLINE_DELIMITERS
+		)
 
 		// Special case: after opening span with invalid delimiter → insert into content
 		if (position === 'after' && target === 'open' && !validDelimiter) {
@@ -624,20 +586,6 @@ export class FocusMarkManager {
 		const position = caretInSpan ? (atStart ? 'before' : 'after') : atEnd ? 'before' : 'after'
 
 		return { position, target, caretInSpan }
-	}
-
-	/**
-	 * Check if typing a character at the given edge would form a valid delimiter.
-	 */
-	private wouldFormValidDelimiter(position: 'before' | 'after', typedChar: string): boolean {
-		if (!this.activeInlineDelimiter) return false
-
-		const potentialDelimiter =
-			position === 'after'
-				? this.activeInlineDelimiter + typedChar
-				: typedChar + this.activeInlineDelimiter
-
-		return SUPPORTED_INLINE_DELIMITERS.has(potentialDelimiter)
 	}
 
 	// ===================================== BLOCK FOCUS MARKS ===================================

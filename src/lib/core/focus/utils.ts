@@ -1,5 +1,11 @@
 import { htmlToMarkdown } from '../transforms/ast-utils'
 import { isBlockTagName } from '../utils/block-marks'
+import { isInlineFormattedElement } from '../utils/dom'
+
+/**
+ * Class name for injected mark spans
+ */
+export const FOCUS_MARK_CLASS = 'pd-focus-mark'
 
 /**
  * Extract markdown delimiters for inline formatted elements (bold, italic, code, etc.).
@@ -110,4 +116,83 @@ export function extractBlockMarks(element: HTMLElement): { start: string } | nul
 		console.error('[FocusMarks] Failed to extract block delimiters:', error)
 		return null
 	}
+}
+
+/**
+ * Create a mark span element with proper class and styling attributes.
+ * Spans inherit contentEditable from parent, so users can modify delimiters to unwrap formatting.
+ *
+ * @param text - The delimiter text to display in the span
+ * @returns A span element with the focus mark class
+ */
+export function createMarkSpan(text: string): HTMLSpanElement {
+	const span = document.createElement('span')
+	span.className = FOCUS_MARK_CLASS
+	span.textContent = text
+	// Note: contentEditable inherited from parent editor div
+	return span
+}
+
+/**
+ * Check if cursor is at the edge of a text node adjacent to a formatted element.
+ *
+ * @param textNode - The text node to check
+ * @param offset - The cursor offset within the text node
+ * @returns The adjacent formatted element if found, null otherwise
+ */
+export function atEdgeOfFormatted(textNode: Text, offset: number): HTMLElement | null {
+	// At start of text node - check previous sibling
+	if (offset === 0 && textNode.previousSibling?.nodeType === Node.ELEMENT_NODE) {
+		const el = textNode.previousSibling as HTMLElement
+		if (isInlineFormattedElement(el.tagName)) return el
+	}
+
+	// At end of text node - check next sibling
+	if (
+		offset === textNode.textContent?.length &&
+		textNode.nextSibling?.nodeType === Node.ELEMENT_NODE
+	) {
+		const el = textNode.nextSibling as HTMLElement
+		if (isInlineFormattedElement(el.tagName)) return el
+	}
+
+	return null
+}
+
+/**
+ * Get a clone of an element without focus mark spans.
+ *
+ * @param element - The element to clone
+ * @returns A clone of the element with all focus mark spans removed, or null if element is null
+ */
+export function getSpanlessClone(element: HTMLElement | null): HTMLElement | null {
+	if (!element) return null
+	const clone = element.cloneNode(true) as HTMLElement
+	clone.querySelectorAll(`.${FOCUS_MARK_CLASS}`).forEach(span => span.remove())
+	return clone
+}
+
+/**
+ * Check if typing a character at the given edge would form a valid delimiter.
+ *
+ * @param currentDelimiter - The current delimiter being used (e.g., "*" or "**")
+ * @param position - Whether the character is being typed before or after the delimiter
+ * @param typedChar - The character being typed
+ * @param supportedDelimiters - Set of valid delimiters
+ * @returns true if the resulting delimiter would be valid, false otherwise
+ */
+export function wouldFormValidDelimiter(
+	currentDelimiter: string,
+	position: 'before' | 'after',
+	typedChar: string,
+	supportedDelimiters: Set<string | null>
+): boolean {
+	if (!currentDelimiter) return false
+
+	const potentialDelimiter =
+		position === 'after'
+			? currentDelimiter + typedChar
+			: typedChar + currentDelimiter
+
+	return supportedDelimiters.has(potentialDelimiter)
 }

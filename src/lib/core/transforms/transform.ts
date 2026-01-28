@@ -5,7 +5,7 @@ import {
 	isBlockPattern
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
-import { FOCUS_MARK_CLASS } from '../utils/focus-mark-manager'
+import { FOCUS_MARK_CLASS } from '../focus/utils'
 import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
