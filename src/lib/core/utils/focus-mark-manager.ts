@@ -1,4 +1,4 @@
-import { htmlToMarkdown } from '../transforms/ast-utils'
+import { htmlBlockToMarkdown, markdownToDomFragment } from '../transforms/ast-utils'
 import {
 	getMainParentBlock,
 	INLINE_FORMATTED_TAGS,
@@ -7,11 +7,11 @@ import {
 	isInlineFormattedElement,
 	calculateCleanCursorOffset
 } from './dom'
-import { isBlockTagName } from './block-marks'
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
 import { setCaretAtEnd } from './selection'
+import { extractInlineMarks, extractBlockMarks } from '../focus/utils'
 
 /**
  * Class name for injected mark spans
@@ -53,7 +53,7 @@ export class FocusMarkManager {
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
 		// console.log(selection.anchorNode, focusedInline)
-
+		
 		// 2. Handle inline transition (if focused element changed)
 		if (this.activeInline !== focusedInline) {
 			// Eject marks from old element
@@ -216,8 +216,8 @@ export class FocusMarkManager {
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
 		// Extract delimiters by reverse-engineering from markdown
-		const delimiters = this.extractDelimiters(element)
-		if (!delimiters || !delimiters.end) return
+		const delimiters = extractInlineMarks(element)
+		if (!delimiters) return
 
 		// Create mark spans
 		const startSpan = this.createMarkSpan(delimiters.start)
@@ -252,7 +252,7 @@ export class FocusMarkManager {
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
 		// Extract delimiter prefix
-		const delimiters = this.extractDelimiters(element)
+		const delimiters = extractBlockMarks(element)
 		if (!delimiters) return
 
 		// Create prefix span
@@ -285,74 +285,6 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Extract markdown delimiters by converting the element to markdown and
-	 * comparing with plain text content.
-	 *
-	 * This approach PRESERVES original syntax:
-	 * - **bold** vs __bold__ (both become <strong>, but we detect which was used)
-	 * - *italic* vs _italic_ (both become <em>, but we detect which was used)
-	 *
-	 * Returns { start, end } for inline elements (e.g., { start: "**", end: "**" })
-	 * Returns { start } only for block elements (e.g., { start: "# " })
-	 */
-	private extractDelimiters(element: HTMLElement): { start: string; end?: string } | null {
-		try {
-			// #5: Simplified approach - create element with just text content
-			const textContent = element.textContent || ''
-			if (!textContent.trim()) return null
-
-			let temp: HTMLElement
-
-			// Special handling for LI: needs parent list context to determine delimiter
-			if (element.tagName === 'LI') {
-				const parentList = element.parentElement
-				if (!parentList || (parentList.tagName !== 'UL' && parentList.tagName !== 'OL')) {
-					return null
-				}
-
-				// Create parent list with single LI child
-				// This preserves context: UL → "- " or OL → "1. "
-				const listWrapper = document.createElement(parentList.tagName)
-				const liTemp = document.createElement('LI')
-				liTemp.textContent = textContent
-				listWrapper.appendChild(liTemp)
-				temp = listWrapper
-			} else {
-				// Regular handling for other elements (headings, inline, blockquote, etc.)
-				temp = document.createElement(element.tagName)
-				temp.textContent = textContent
-			}
-
-			// Convert to markdown
-			const markdown = htmlToMarkdown(temp.outerHTML).trim()
-			const trimmedText = textContent.trim()
-
-			// Split markdown by text content to extract delimiters
-			// Example: "**bold**".split("bold") → ["**", "**"] (2 parts)
-			// Example: "# Title".split("Title") → ["# ", ""] (2 parts - prefix + empty)
-			// Example: "- Item".split("Item") → ["- ", ""] (2 parts - list prefix + empty)
-			const parts = markdown.split(trimmedText)
-
-			// Error handling: text not found in markdown (would give only 1 part)
-			if (parts.length < 2) return null
-
-			const start = parts[0]
-			const end = parts[1] || ''
-
-			// Block elements: return only prefix (end is empty string anyway)
-			if (isBlockTagName(element.tagName as any)) {
-				return { start }
-			}
-
-			// Inline elements: return both opening and closing delimiters
-			return { start, end }
-		} catch (error) {
-			console.error('[FocusMarks] Failed to extract delimiters:', error)
-			return null
-		}
-	}
-
-	/**
 	 * Create a mark span element with proper class and styling attributes.
 	 * Spans inherit contentEditable from parent, so users can modify delimiters to unwrap formatting.
 	 */
@@ -366,27 +298,24 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Unwraps the specified formatted element and re-parses for new patterns.
+	 * Unwraps the active inline element and re-parses for new patterns.
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
 	 *
 	 * @param selection - Current selection for caret restoration
-	 * @param target - The element to unwrap and reparse
 	 * @param skipCaretCorrection - don't correct caret to end on reinjection
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapAndReparse(
-		selection: Selection,
-		target: HTMLElement,
-		skipCaretCorrection = false
-	): boolean {
+	public unwrapAndReparse(selection: Selection, skipCaretCorrection = false): boolean {
+		const formattedElement = this.activeInline
+		if (!formattedElement) return false
 
-		const parentBlock = target.parentElement
+		const parentBlock = formattedElement.parentElement
 		if (!parentBlock) return false
 
-		const newElementFrag = reparse(target, true)
+		const newElementFrag = reparse(formattedElement, true)
 		const newBlockFrag = buildBlockFragmentWithReplacement(
 			parentBlock,
-			target,
+			formattedElement,
 			newElementFrag
 		)
 
@@ -394,6 +323,56 @@ export class FocusMarkManager {
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		this.editableRef && this.update(selection, this.editableRef, skipCaretCorrection)
+
+		return true
+	}
+
+	/**
+	 * Unwraps the active block element and re-parses for new patterns.
+	 * Used when block focus mark spans are edited/disconnected.
+	 *
+	 * @param selection - Current selection for caret restoration
+	 * @returns true if unwrap was performed, false otherwise
+	 */
+	public unwrapBlock(selection: Selection): boolean {
+		const blockElement = this.activeBlock
+		if (!blockElement) return false
+
+		const parentBlock = blockElement.parentElement
+		if (!parentBlock) return false
+
+		// Clean the block by removing focus marks before conversion
+		const cleanBlock = blockElement.cloneNode(true) as HTMLElement
+		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
+		cleanBlock.normalize()
+
+		// Convert block element to markdown
+		const contentInMd = htmlBlockToMarkdown(cleanBlock)
+
+		// Parse back to DOM
+		const { fragment, isInline } = markdownToDomFragment(contentInMd)
+
+		if (isInline) {
+			// Block became inline after conversion (e.g., deleted "# " from heading)
+			// Use inline replacement strategy
+			const newBlockFrag = buildBlockFragmentWithReplacement(
+				parentBlock,
+				blockElement,
+				fragment
+			)
+			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
+			smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
+		} else {
+			// Still block content after conversion
+			const lastNodeInFragment = fragment.lastChild
+			if (!lastNodeInFragment) return false
+
+			parentBlock.replaceWith(fragment)
+			setCaretAtEnd(lastNodeInFragment, selection)
+		}
+
+		// Update focus marks after replacement
+		this.editableRef && this.update(selection, this.editableRef)
 
 		return true
 	}
@@ -481,7 +460,7 @@ export class FocusMarkManager {
 		if (!hasBreakingChange) return false
 
 		// Find new best pattern
-		this.unwrapAndReparse(selection, this.activeInline)
+		this.unwrapAndReparse(selection)
 		// Unfocus to skip showing marks (like regular typing)
 		this.skipNextFocusMarks = true
 		this.unfocus()
@@ -507,7 +486,7 @@ export class FocusMarkManager {
 			// Skip fix if caret wasn't at end of end span
 			const edge = this.isAtEdge(selection)
 			const skipCorrection = !(edge?.position === 'after' && edge?.target === 'close')
-			this.unwrapAndReparse(selection, this.activeInline, skipCorrection)
+			this.unwrapAndReparse(selection, skipCorrection)
 			this.update(selection, this.editableRef!)
 			return true
 		}
@@ -535,7 +514,10 @@ export class FocusMarkManager {
 			this.blockSpanRefs.some(span => span.textContent !== this.activeBlockDelimiter)
 		)
 			{
-				return this.unwrapAndReparse(selection, this.activeBlock)
+				// todo: handle and update blocks
+				// todo: detect edges and escape marks spans (e.g. "# |" doesn't type inside the span)
+				// todo: don't skip showing the current block marks after new pattern / reparsing
+				// return this.unwrapBlock(selection)
 			}
 		return false
 	}
