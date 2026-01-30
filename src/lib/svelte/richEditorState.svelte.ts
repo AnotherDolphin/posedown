@@ -187,12 +187,8 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection || !selection.anchorNode || !this.editableRef) return false
 
-		if(this.focusMarkManager.handleBlockChanges(selection)) {
-			this.history.push(this.editableRef)
-			return
-		}
-
-		if (this.focusMarkManager.handleActiveInlineChange(selection)) {
+		// Handle both block and inline focus mark changes
+		if (this.focusMarkManager.handleInFocused(selection)) {
 			this.history.push(this.editableRef)
 			return
 		}

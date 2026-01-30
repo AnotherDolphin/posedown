@@ -307,7 +307,7 @@ export class FocusMarkManager {
 
 		const parentBlock = blockElement.parentElement
 		if (!parentBlock) return false
-
+		debugger
 		// Clean the block by removing focus marks before conversion
 		const cleanBlock = blockElement.cloneNode(true) as HTMLElement
 		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
@@ -437,13 +437,66 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Main handler for active inline elements with focus marks.
+	 * Main handler for both block and inline focus mark changes.
+	 * Call this in onInput to handle all focus mark editing scenarios.
+	 *
+	 * Processes in order:
+	 * 1. Block changes first (more structural, can affect inline elements)
+	 * 2. Inline changes second (more granular, contained within blocks)
+	 * moi: prob wrong order
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if any handling occurred, false otherwise
+	 */
+	public handleInFocused(selection: Selection): boolean {
+		// BLOCK FIRST - more structural, can replace/restructure DOM
+		if (this.activeBlock) {
+			const blockHandled = this.handleFocusedBlock(selection)
+			if (blockHandled) {
+				// Block was unwrapped/restructured - let next update() cycle handle inline detection
+				return true
+			}
+		}
+
+		// INLINE SECOND - more granular, only if block didn't restructure
+		if (this.activeInline) {
+			return this.handleFocusedInline(selection)
+		}
+
+		return false
+	}
+
+	/**
+	 * Handle changes to active block element focus marks.
+	 * Detects when block delimiter spans are modified or disconnected.
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if block handling occurred, false otherwise
+	 */
+	private handleFocusedBlock(selection: Selection): boolean {
+		if (!this.activeBlock) return false
+
+		// Check if block spans were modified or disconnected
+		if (
+			this.blockSpanRefs.some(span => !span.isConnected) ||
+			this.blockSpanRefs.some(span => span.textContent !== this.activeBlockDelimiter)
+		) {
+			// todo: detect edges and escape marks spans (e.g. "# |" doesn't type inside the span)
+			// todo: don't skip showing the current block marks after new pattern / reparsing
+			return this.unwrapBlock(selection)
+		}
+
+		return false
+	}
+
+	/**
+	 * Handle changes to active inline element focus marks.
 	 * Checks for span modifications, nested patterns, and breaking delimiter edits.
 	 *
 	 * @param selection Current selection for caret restoration
-	 * @returns true if any inline handling occurred, false otherwise
+	 * @returns true if inline handling occurred, false otherwise
 	 */
-	public handleActiveInlineChange(selection: Selection): boolean {
+	private handleFocusedInline(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// 1. Check span status and handle mirroring
@@ -470,22 +523,6 @@ export class FocusMarkManager {
 			return true
 		}
 
-		return false
-	}
-
-	public handleBlockChanges(selection: Selection): boolean {
-		if (!this.activeBlock) return false
-		// debugger
-		if (
-			this.blockSpanRefs.some(span => !span.isConnected) ||
-			this.blockSpanRefs.some(span => span.textContent !== this.activeBlockDelimiter)
-		)
-			{
-				// todo: handle and update blocks
-				// todo: detect edges and escape marks spans (e.g. "# |" doesn't type inside the span)
-				// todo: don't skip showing the current block marks after new pattern / reparsing
-				// return this.unwrapBlock(selection)
-			}
 		return false
 	}
 
@@ -536,7 +573,7 @@ export class FocusMarkManager {
 			setCaretAtEnd(targetSpan, selection)
 		}
 
-		return this.handleActiveInlineChange(selection)
+		return this.handleFocusedInline(selection)
 	}
 
 	/**
@@ -587,17 +624,11 @@ export class FocusMarkManager {
 
 		return { position, target, caretInSpan }
 	}
-
-	// ===================================== BLOCK FOCUS MARKS ===================================
-	// handleBlockChanges(selection: Selection): boolean {
-	// 	if (!this.activeBlock) return false
-	// }
 }
 
 /**
- * issues:
- * - blocks don't react to md mark changes
- * - selecting a code block should focus outside the focusMarks (spans) OR prevent enter from adding new lines inside spans
+ * Known issues:
+ * - Selecting a code block should focus outside the focusMarks (spans) OR prevent enter from adding new lines inside spans
  */
 
 // NOTE: Integration points that need to be handled elsewhere:
