@@ -1,4 +1,4 @@
-import { htmlBlockToMarkdown, markdownToDomFragment } from '../transforms/ast-utils'
+import { htmlToMarkdown, markdownToDomFragment } from '../transforms/ast-utils'
 import {
 	getMainParentBlock,
 	INLINE_FORMATTED_TAGS,
@@ -310,31 +310,16 @@ export class FocusMarkManager {
 		const parentBlock = blockElement.parentElement
 		if (!parentBlock) return false
 
-		// Clean the block by removing focus marks before conversion
-		const cleanBlock = blockElement.cloneNode(true) as HTMLElement
-		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-		cleanBlock.normalize()
+		// Clean focus marks first (like inline does)
+		this.ejectMarks(blockElement)
 
-		// Convert block element to markdown
-		const contentInMd = htmlBlockToMarkdown(cleanBlock)
+		// Use reparse like inline does - preserves inline formatting
+		const fragment = reparse(blockElement, true) as DocumentFragment
 
-		// Parse back to DOM
-		const { fragment, isInline } = markdownToDomFragment(contentInMd)
-
-		if (isInline) {
-			// Block became inline after conversion (e.g., deleted "# " from heading)
-			// Use inline replacement strategy
-			const newBlockFrag = buildBlockFragmentWithReplacement(parentBlock, blockElement, fragment)
-			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
-			smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
-		} else {
-			// Still block content after conversion
-			const lastNodeInFragment = fragment.lastChild
-			if (!lastNodeInFragment) return false
-
-			parentBlock.replaceWith(fragment)
-			setCaretAtEnd(lastNodeInFragment, selection)
-		}
+		// Use same replacement pattern as inline
+		const newBlockFrag = buildBlockFragmentWithReplacement(parentBlock, blockElement, fragment)
+		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
+		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		// Update focus marks after replacement
 		this.editableRef && this.update(selection, this.editableRef)
@@ -485,15 +470,9 @@ export class FocusMarkManager {
 		}
 
 		// Check if span content changed
-		let newDelimiter = prefixSpan.textContent || ''
+		const newDelimiter = prefixSpan.textContent || ''
 		if (newDelimiter === this.activeBlockDelimiter) {
 			return false
-		}
-
-		// For heading delimiters, auto-add trailing space if missing
-		if (/^#{1,6}$/.test(newDelimiter)) {
-			newDelimiter = newDelimiter + ' '
-			prefixSpan.textContent = newDelimiter // Update the span
 		}
 
 		// Check if new delimiter is valid
@@ -503,14 +482,16 @@ export class FocusMarkManager {
 		}
 
 		// Valid new delimiter - apply it
-		// Get content without the delimiter span
+		// Get content without the delimiter span, preserving inline formatting
 		const cleanBlock = this.activeBlock.cloneNode(true) as HTMLElement
 		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
 		cleanBlock.normalize()
-		const content = cleanBlock.textContent || ''
+
+		// Use htmlToMarkdown to preserve inline formatting (not textContent which loses it)
+		const contentInMd = htmlToMarkdown(cleanBlock.innerHTML)
 
 		// Create new markdown with new delimiter
-		const newMarkdown = newDelimiter + content
+		const newMarkdown = newDelimiter + contentInMd
 		const { fragment } = markdownToDomFragment(newMarkdown)
 
 		const newBlock = fragment.firstChild
@@ -541,7 +522,7 @@ export class FocusMarkManager {
 		const { spansMirrored, spansDisconnected, invalidChanges } = this.checkAndMirrorSpans()
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spansMirrored || spansDisconnected || invalidChanges) {
-			// Skip fix if caret wasn't at end of end span
+			// Skip caret correction if caret wasn't at end of end span
 			const edge = this.isAtEdge(selection)
 			const skipCorrection = !(edge?.position === 'after' && edge?.target === 'close')
 			this.unwrapAndReparse(selection, skipCorrection)
@@ -599,8 +580,6 @@ export class FocusMarkManager {
 			}
 			// issue#76 fix: move caret after the typed character
 			setCaretAt(startSpan.nextSibling as Text, typedChar.length, selection)
-
-			// setCaretAtEnd(startSpan.nextSibling as Text, selection)
 			return true
 		}
 
@@ -778,7 +757,6 @@ export class FocusMarkManager {
 			typedChar,
 			isSupportedBlockDelimiter
 		)
-		debugger
 
 		// Special case: after prefix span with invalid delimiter → insert into content (escape the span)
 		if (position === 'after' && target === 'open' && !validDelimiter) {
@@ -790,7 +768,7 @@ export class FocusMarkManager {
 				prefixSpan.after(textNode)
 			}
 			// Move caret after the typed character
-			setCaretAt(prefixSpan.nextSibling as Text, 1, selection)
+			setCaretAt(prefixSpan.nextSibling as Text, typedChar.length, selection)
 			return true
 		}
 

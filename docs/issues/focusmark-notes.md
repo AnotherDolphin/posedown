@@ -61,11 +61,15 @@
 
 #### Blocks
 
-1. caret restoration ignores delimiter length
+1. caret restoration ignores delimiter length ✅
+  > restores to correct offset
 2. Uncaught (in promise) TypeError: cleanBlock.querySelectorAll is not a function
     at findAndTransform (transform.ts:42:13)
     at HTMLDivElement.onInput (richEditorState.svelte.ts:205:7)
 3. deleting all block marks converts content to text and MERGES with previous P block
+31. changing block format (ex h1=>h2) removes all inline formats ✅
+32. block delimiters don't normalize but disappear if pattern becomes invalid
+33. onBefore does something that makes the first character after an inline transform make the H block element a P
 4. blockquote focus mark shows on its on line when focused `<blockquote><span><p> ...`
 5. codeblock marks never show
 6. lists make no sense at all; can the native psuedo li marker be editable
