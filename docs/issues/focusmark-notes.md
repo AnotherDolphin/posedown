@@ -56,6 +56,9 @@
   > reason: invalid delimiter edits didn't trigger a porper reparse
   > added `invalidChanges` by refactoring `checkAndMirrorSpans`; to be handled as a span edit and not a nestedPattern in handleActiveInlineChange
 
+- issue#76: fix caret offset when typing after open span istead of `setCaretAtEnd` ✅
+  > used new `setCaretAt` with offset
+
 #### Blocks
 
 1. caret restoration ignores delimiter length

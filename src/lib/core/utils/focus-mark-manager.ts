@@ -11,7 +11,7 @@ import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
 import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
-import { setCaretAtEnd } from './selection'
+import { setCaretAtEnd, setCaretAt } from './selection'
 import {
 	extractInlineMarks,
 	extractBlockMarks,
@@ -58,7 +58,7 @@ export class FocusMarkManager {
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
 		// console.log(selection.anchorNode, focusedInline)
-		
+
 		// 2. Handle inline transition (if focused element changed)
 		if (this.activeInline !== focusedInline) {
 			// Eject marks from old element
@@ -324,11 +324,7 @@ export class FocusMarkManager {
 		if (isInline) {
 			// Block became inline after conversion (e.g., deleted "# " from heading)
 			// Use inline replacement strategy
-			const newBlockFrag = buildBlockFragmentWithReplacement(
-				parentBlock,
-				blockElement,
-				fragment
-			)
+			const newBlockFrag = buildBlockFragmentWithReplacement(parentBlock, blockElement, fragment)
 			const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 			smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 		} else {
@@ -390,7 +386,9 @@ export class FocusMarkManager {
 	private handleNestedPatterns(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
-		const hasInlinePattern = findFirstMarkdownMatch(getSpanlessClone(this.activeInline)?.textContent || '')
+		const hasInlinePattern = findFirstMarkdownMatch(
+			getSpanlessClone(this.activeInline)?.textContent || ''
+		)
 		if (!hasInlinePattern) return false
 
 		const [startSpan, endSpan] = this.inlineSpanRefs
@@ -576,7 +574,7 @@ export class FocusMarkManager {
 	 * @param typedChar - The character being typed
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
-	public handleMarkSpanEdges(selection: Selection, typedChar: string): boolean {
+	public handleInlineSpanEdges(selection: Selection, typedChar: string): boolean {
 		const edge = this.isAtEdge(selection)
 		if (!edge) return false
 
@@ -599,7 +597,10 @@ export class FocusMarkManager {
 				const textNode = document.createTextNode(typedChar)
 				startSpan.after(textNode)
 			}
-			setCaretAtEnd(startSpan.nextSibling as Text, selection)
+			// issue#76 fix: move caret after the typed character
+			setCaretAt(startSpan.nextSibling as Text, typedChar.length, selection)
+
+			// setCaretAtEnd(startSpan.nextSibling as Text, selection)
 			return true
 		}
 
@@ -666,6 +667,53 @@ export class FocusMarkManager {
 	}
 
 	/**
+	 * Check if cursor is at the edge of activeBlock.
+	 * Detects cursor in adjacent text node or inside focus mark spans at their edges.
+	 * Block spans only have opening delimiters (no closing), so target is always 'open'.
+	 *
+	 * @returns Object with position info, or null if not at edge
+	 *   - position: 'before' | 'after' - relative to the target span
+	 *   - target: 'open' | 'close' - which span the cursor is at (always 'open' for blocks)
+	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
+	 */
+	private isAtEdge2(selection: Selection): {
+		position: 'before' | 'after'
+		target: 'open' | 'close'
+		caretInSpan: boolean
+	} | null {
+		if (!this.activeBlock || !selection.anchorNode) return null
+		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
+
+		const textNode = selection.anchorNode as Text
+		const offset = selection.anchorOffset
+		const [startSpan] = this.blockSpanRefs
+
+		const atStart = offset === 0
+		const atEnd = offset === textNode.textContent?.length
+		if (!atStart && !atEnd) return null
+
+		const parent = textNode.parentNode
+		const next = textNode.nextSibling
+		const prev = textNode.previousSibling
+
+		// Determine target span from context
+		// For blocks, we only have opening span, so target is always 'open'
+		const target: 'open' | 'close' | null =
+			parent === startSpan ||
+			(atEnd && next === this.activeBlock) ||
+			(atStart && prev === startSpan)
+				? 'open'
+				: null
+
+		if (!target) return null
+
+		const caretInSpan = parent === startSpan
+		const position = caretInSpan ? (atStart ? 'before' : 'after') : atEnd ? 'before' : 'after'
+
+		return { position, target, caretInSpan }
+	}
+
+	/**
 	 * Check if cursor is at the edge of a block delimiter span.
 	 * Block elements only have opening delimiter spans at the start.
 	 *
@@ -697,9 +745,7 @@ export class FocusMarkManager {
 		// Check if we're at the edge of the prefix span
 		// Either inside the span at its edges, or in adjacent text node
 		const atPrefixEdge =
-			parent === prefixSpan ||
-			(atEnd && next === prefixSpan) ||
-			(atStart && prev === prefixSpan)
+			parent === prefixSpan || (atEnd && next === prefixSpan) || (atStart && prev === prefixSpan)
 
 		if (!atPrefixEdge) return null
 
@@ -719,38 +765,12 @@ export class FocusMarkManager {
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
 	public handleBlockMarkSpanEdges(selection: Selection, typedChar: string): boolean {
-		if (!selection.anchorNode || this.blockSpanRefs.length === 0) return false
-
-		const [prefixSpan] = this.blockSpanRefs
-
-		// Check if cursor is ANYWHERE inside the block delimiter span
-		const isInsideSpan =
-			selection.anchorNode.parentNode === prefixSpan ||
-			selection.anchorNode === prefixSpan
-
-		if (isInsideSpan && typedChar !== '#') {
-			// Non-# character typed inside span → escape to content
-			const contentNode = prefixSpan.nextSibling
-			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
-				contentNode.textContent = typedChar + (contentNode.textContent || '')
-			} else {
-				const textNode = document.createTextNode(typedChar)
-				prefixSpan.after(textNode)
-			}
-			// Move caret after the typed character
-			const targetNode = prefixSpan.nextSibling as Text
-			const range = document.createRange()
-			range.setStart(targetNode, 1)
-			range.collapse(true)
-			selection.removeAllRanges()
-			selection.addRange(range)
-			return true
-		}
-
-		const edge = this.isAtBlockEdge(selection)
+		const edge = this.isAtEdge2(selection)
 		if (!edge) return false
 
-		const { position, caretInSpan } = edge
+		const { position, caretInSpan, target } = edge
+		const [prefixSpan] = this.blockSpanRefs
+		const targetSpan = prefixSpan
 
 		const validDelimiter = wouldFormValidBlockDelimiter(
 			this.activeBlockDelimiter || '',
@@ -758,9 +778,10 @@ export class FocusMarkManager {
 			typedChar,
 			isSupportedBlockDelimiter
 		)
+		debugger
 
 		// Special case: after prefix span with invalid delimiter → insert into content (escape the span)
-		if (position === 'after' && !validDelimiter) {
+		if (position === 'after' && target === 'open' && !validDelimiter) {
 			const contentNode = prefixSpan.nextSibling
 			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
 				contentNode.textContent = typedChar + (contentNode.textContent || '')
@@ -769,12 +790,7 @@ export class FocusMarkManager {
 				prefixSpan.after(textNode)
 			}
 			// Move caret after the typed character
-			const targetNode = prefixSpan.nextSibling as Text
-			const range = document.createRange()
-			range.setStart(targetNode, 1)
-			range.collapse(true)
-			selection.removeAllRanges()
-			selection.addRange(range)
+			setCaretAt(prefixSpan.nextSibling as Text, 1, selection)
 			return true
 		}
 
@@ -782,7 +798,11 @@ export class FocusMarkManager {
 
 		// Insert into span: prepend for 'before', append for 'after'
 		if (position === 'before') {
+			// browser will handle edit
+			if (caretInSpan) return false
+			// next code should not be reached for block spans
 			prefixSpan.textContent = typedChar + (prefixSpan.textContent || '')
+			setCaretAt(prefixSpan, typedChar.length, selection)
 		} else {
 			prefixSpan.textContent = (prefixSpan.textContent || '') + typedChar
 			setCaretAtEnd(prefixSpan, selection)

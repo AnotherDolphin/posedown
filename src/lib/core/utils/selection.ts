@@ -137,3 +137,19 @@ export async function escapeCaretStyle(
 
 	return exitTextNode
 }
+
+/**
+ * Sets the caret at a specific offset within a target node.
+ * Creates a collapsed range at the specified position.
+ *
+ * @param targetNode - The node to position the caret in
+ * @param offset - The offset within the node (character position for text nodes)
+ * @param selection - The selection object to update
+ */
+export function setCaretAt(targetNode: Node, offset: number, selection: Selection): void {
+	const range = document.createRange()
+	range.setStart(targetNode, offset)
+	range.collapse(true)
+	selection.removeAllRanges()
+	selection.addRange(range)
+}

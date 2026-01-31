@@ -46,7 +46,7 @@ export class RichEditorState {
 	lastSyncedAt = Date.now()
 	private syncTimer: ReturnType<typeof setTimeout> | null = null
 	marks: Array<Element | Node> | null = $state(null) // only a state for debugging with $inspect
-	private history = new EditorHistory({ debug: true })
+	private history = new EditorHistory({ debug: false })
 	private focusMarkManager = new FocusMarkManager()
 	private hasInitialHistoryEntry = false
 
@@ -226,7 +226,7 @@ export class RichEditorState {
 		}
 
 		// 1b. Inline delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
-		if (this.focusMarkManager.handleMarkSpanEdges(selection, e.data)) {
+		if (this.focusMarkManager.handleInlineSpanEdges(selection, e.data)) {
 			e.preventDefault()
 			this.history.push(this.editableRef)
 			return
