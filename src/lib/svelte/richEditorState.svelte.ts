@@ -385,12 +385,8 @@ export class RichEditorState {
 
 		// ===== FocusMarks: Show markdown delimiters when cursor enters formatted elements =====
 		// This injects/ejects .pd-focus-mark spans dynamically based on cursor position
-		// Skip if this selection change was triggered by a transformation (not user navigation)
-		if (this.focusMarkManager.skipNextFocusMarks) {
-			this.focusMarkManager.skipNextFocusMarks = false
-		} else {
-			this.focusMarkManager.update(selection, this.editableRef)
-		}
+		// Note: skipNextFocusMarks is handled inside update() - only affects inline marks
+		this.focusMarkManager.update(selection, this.editableRef)
 
 		// ===== Exit Marks: Track styled elements where caret is at END (for exit-on-type) =====
 		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements

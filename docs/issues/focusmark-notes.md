@@ -63,6 +63,7 @@
 
 1. caret restoration ignores delimiter length ✅
   > restores to correct offset
+11. when there is content, typing a header pattern (as a prefix) moves the curosr to the end of the content/block
 2. Uncaught (in promise) TypeError: cleanBlock.querySelectorAll is not a function
     at findAndTransform (transform.ts:42:13)
     at HTMLDivElement.onInput (richEditorState.svelte.ts:205:7)

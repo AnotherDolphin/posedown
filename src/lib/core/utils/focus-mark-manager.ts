@@ -57,31 +57,35 @@ export class FocusMarkManager {
 		// 1. Find which inline/block elements contain the cursor
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
-		// console.log(selection.anchorNode, focusedInline)
 
 		// 2. Handle inline transition (if focused element changed)
+		// skipNextFocusMarks only affects inline marks (for just-transformed elements)
 		if (this.activeInline !== focusedInline) {
 			// Eject marks from old element
 			if (this.activeInline) {
 				this.ejectMarks(this.activeInline)
 			}
 
-			// Inject marks into new element
-			if (focusedInline) {
+			// Inject marks into new element (unless skipping)
+			if (focusedInline && !this.skipNextFocusMarks) {
 				this.injectInlineMarks(focusedInline, skipCaretCorrection)
 			}
 
 			this.activeInline = focusedInline
 		}
 
-		// 3. Handle block transition (if focused element changed)
-		if (this.activeBlock !== focusedBlock) {
-			// Eject marks from old element
-			if (this.activeBlock) {
+		// Reset the skip flag after inline handling
+		if (this.skipNextFocusMarks) this.skipNextFocusMarks = false
+
+		// 3. Handle block transition or re-injection if marks were removed
+		const blockMarksExist = focusedBlock?.querySelector(`.${FOCUS_MARK_CLASS}`)
+		if (this.activeBlock !== focusedBlock || (focusedBlock && !blockMarksExist)) {
+			// Eject marks from old element (if different)
+			if (this.activeBlock && this.activeBlock !== focusedBlock) {
 				this.ejectMarks(this.activeBlock)
 			}
 
-			// Inject marks into new element
+			// Inject marks into new element (or re-inject if missing)
 			if (focusedBlock) {
 				this.injectBlockMarks(focusedBlock)
 			}
@@ -660,12 +664,19 @@ export class FocusMarkManager {
 		target: 'open' | 'close'
 		caretInSpan: boolean
 	} | null {
-		if (!this.activeBlock || !selection.anchorNode) return null
-		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
-
-		const textNode = selection.anchorNode as Text
-		const offset = selection.anchorOffset
 		const [startSpan] = this.blockSpanRefs
+		const anchorNode = selection.anchorNode
+		if (!this.activeBlock || !anchorNode || !startSpan) return null
+
+		// if cursor in <br> sibling of span (empty block)
+		if (anchorNode.nodeName === 'BR' && anchorNode.previousSibling === startSpan) {
+			return { position: 'after', target: 'open', caretInSpan: false }
+		}
+
+		if (anchorNode.nodeType !== Node.TEXT_NODE) return null
+
+		const textNode = anchorNode as Text
+		const offset = selection.anchorOffset
 
 		const atStart = offset === 0
 		const atEnd = offset === textNode.textContent?.length
