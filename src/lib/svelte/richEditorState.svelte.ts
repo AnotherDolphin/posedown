@@ -216,7 +216,16 @@ export class RichEditorState {
 		const selection = window.getSelection()
 		if (!selection?.anchorNode) return
 
-		// 1. Edge delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
+		// 1. Edge delimiter handling and escape behavior
+
+		// 1a. Block delimiter upgrade/escape (e.g., typing # at edge of # to make ##, or escaping to content)
+		if (this.focusMarkManager.handleBlockMarkSpanEdges(selection, e.data)) {
+			e.preventDefault()
+			this.history.push(this.editableRef)
+			return
+		}
+
+		// 1b. Inline delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
 		if (this.focusMarkManager.handleMarkSpanEdges(selection, e.data)) {
 			e.preventDefault()
 			this.history.push(this.editableRef)

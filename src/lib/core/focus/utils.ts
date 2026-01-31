@@ -196,3 +196,29 @@ export function wouldFormValidDelimiter(
 
 	return supportedDelimiters.has(potentialDelimiter)
 }
+
+/**
+ * Check if typing a character at the given position would form a valid block delimiter.
+ * Handles both fixed delimiters (headings, blockquotes, lists) and dynamic ones (ordered lists).
+ *
+ * @param currentDelimiter - The current block delimiter being used (e.g., "# ", "> ")
+ * @param position - Whether the character is being typed before or after the delimiter
+ * @param typedChar - The character being typed
+ * @param validateFn - Function to validate if a string is a supported block delimiter
+ * @returns true if the resulting delimiter would be valid, false otherwise
+ */
+export function wouldFormValidBlockDelimiter(
+	currentDelimiter: string,
+	position: 'before' | 'after',
+	typedChar: string,
+	validateFn: (delimiter: string) => boolean
+): boolean {
+	if (!currentDelimiter) return false
+
+	const potentialDelimiter =
+		position === 'after'
+			? currentDelimiter + typedChar
+			: typedChar + currentDelimiter
+
+	return validateFn(potentialDelimiter)
+}

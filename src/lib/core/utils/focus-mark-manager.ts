@@ -9,6 +9,7 @@ import {
 } from './dom'
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
+import { isSupportedBlockDelimiter } from './block-patterns'
 import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
 import { setCaretAtEnd } from './selection'
 import {
@@ -18,7 +19,8 @@ import {
 	createMarkSpan,
 	atEdgeOfFormatted,
 	getSpanlessClone,
-	wouldFormValidDelimiter
+	wouldFormValidDelimiter,
+	wouldFormValidBlockDelimiter
 } from '../focus/utils'
 
 /**
@@ -307,7 +309,7 @@ export class FocusMarkManager {
 
 		const parentBlock = blockElement.parentElement
 		if (!parentBlock) return false
-		debugger
+
 		// Clean the block by removing focus marks before conversion
 		const cleanBlock = blockElement.cloneNode(true) as HTMLElement
 		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
@@ -476,17 +478,55 @@ export class FocusMarkManager {
 	private handleFocusedBlock(selection: Selection): boolean {
 		if (!this.activeBlock) return false
 
-		// Check if block spans were modified or disconnected
-		if (
-			this.blockSpanRefs.some(span => !span.isConnected) ||
-			this.blockSpanRefs.some(span => span.textContent !== this.activeBlockDelimiter)
-		) {
-			// todo: detect edges and escape marks spans (e.g. "# |" doesn't type inside the span)
-			// todo: don't skip showing the current block marks after new pattern / reparsing
+		const [prefixSpan] = this.blockSpanRefs
+		if (!prefixSpan) return false
+
+		// Check if span was disconnected
+		if (!prefixSpan.isConnected) {
 			return this.unwrapBlock(selection)
 		}
 
-		return false
+		// Check if span content changed
+		let newDelimiter = prefixSpan.textContent || ''
+		if (newDelimiter === this.activeBlockDelimiter) {
+			return false
+		}
+
+		// For heading delimiters, auto-add trailing space if missing
+		if (/^#{1,6}$/.test(newDelimiter)) {
+			newDelimiter = newDelimiter + ' '
+			prefixSpan.textContent = newDelimiter // Update the span
+		}
+
+		// Check if new delimiter is valid
+		if (!isSupportedBlockDelimiter(newDelimiter)) {
+			// Invalid delimiter - unwrap to plain paragraph
+			return this.unwrapBlock(selection)
+		}
+
+		// Valid new delimiter - apply it
+		// Get content without the delimiter span
+		const cleanBlock = this.activeBlock.cloneNode(true) as HTMLElement
+		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
+		cleanBlock.normalize()
+		const content = cleanBlock.textContent || ''
+
+		// Create new markdown with new delimiter
+		const newMarkdown = newDelimiter + content
+		const { fragment } = markdownToDomFragment(newMarkdown)
+
+		const newBlock = fragment.firstChild
+		if (!newBlock) return false
+
+		// Replace the heading element itself, NOT the parent
+		this.activeBlock.replaceWith(newBlock)
+		setCaretAtEnd(newBlock, selection)
+
+		// Update state and refresh focus marks
+		this.activeBlockDelimiter = newDelimiter
+		this.editableRef && this.update(selection, this.editableRef)
+
+		return true
 	}
 
 	/**
@@ -623,6 +663,133 @@ export class FocusMarkManager {
 		const position = caretInSpan ? (atStart ? 'before' : 'after') : atEnd ? 'before' : 'after'
 
 		return { position, target, caretInSpan }
+	}
+
+	/**
+	 * Check if cursor is at the edge of a block delimiter span.
+	 * Block elements only have opening delimiter spans at the start.
+	 *
+	 * @returns Object with position info, or null if not at edge
+	 *   - position: 'before' | 'after' - relative to the delimiter span
+	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
+	 */
+	private isAtBlockEdge(selection: Selection): {
+		position: 'before' | 'after'
+		caretInSpan: boolean
+	} | null {
+		if (!this.activeBlock || !selection.anchorNode || this.blockSpanRefs.length === 0) {
+			return null
+		}
+		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
+
+		const textNode = selection.anchorNode as Text
+		const offset = selection.anchorOffset
+		const [prefixSpan] = this.blockSpanRefs
+
+		const atStart = offset === 0
+		const atEnd = offset === textNode.textContent?.length
+		if (!atStart && !atEnd) return null
+
+		const parent = textNode.parentNode
+		const next = textNode.nextSibling
+		const prev = textNode.previousSibling
+
+		// Check if we're at the edge of the prefix span
+		// Either inside the span at its edges, or in adjacent text node
+		const atPrefixEdge =
+			parent === prefixSpan ||
+			(atEnd && next === prefixSpan) ||
+			(atStart && prev === prefixSpan)
+
+		if (!atPrefixEdge) return null
+
+		const caretInSpan = parent === prefixSpan
+		const position = caretInSpan ? (atStart ? 'before' : 'after') : atEnd ? 'before' : 'after'
+
+		return { position, caretInSpan }
+	}
+
+	/**
+	 * Handle typing characters in block focus mark spans.
+	 * Intercepts input to handle delimiter modifications (e.g., # → ## for h1 → h2).
+	 * Also handles escaping out of the span when typing non-delimiter characters.
+	 *
+	 * @param selection - Current selection
+	 * @param typedChar - The character being typed
+	 * @returns true if handled (caller should preventDefault), false otherwise
+	 */
+	public handleBlockMarkSpanEdges(selection: Selection, typedChar: string): boolean {
+		if (!selection.anchorNode || this.blockSpanRefs.length === 0) return false
+
+		const [prefixSpan] = this.blockSpanRefs
+
+		// Check if cursor is ANYWHERE inside the block delimiter span
+		const isInsideSpan =
+			selection.anchorNode.parentNode === prefixSpan ||
+			selection.anchorNode === prefixSpan
+
+		if (isInsideSpan && typedChar !== '#') {
+			// Non-# character typed inside span → escape to content
+			const contentNode = prefixSpan.nextSibling
+			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
+				contentNode.textContent = typedChar + (contentNode.textContent || '')
+			} else {
+				const textNode = document.createTextNode(typedChar)
+				prefixSpan.after(textNode)
+			}
+			// Move caret after the typed character
+			const targetNode = prefixSpan.nextSibling as Text
+			const range = document.createRange()
+			range.setStart(targetNode, 1)
+			range.collapse(true)
+			selection.removeAllRanges()
+			selection.addRange(range)
+			return true
+		}
+
+		const edge = this.isAtBlockEdge(selection)
+		if (!edge) return false
+
+		const { position, caretInSpan } = edge
+
+		const validDelimiter = wouldFormValidBlockDelimiter(
+			this.activeBlockDelimiter || '',
+			position,
+			typedChar,
+			isSupportedBlockDelimiter
+		)
+
+		// Special case: after prefix span with invalid delimiter → insert into content (escape the span)
+		if (position === 'after' && !validDelimiter) {
+			const contentNode = prefixSpan.nextSibling
+			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
+				contentNode.textContent = typedChar + (contentNode.textContent || '')
+			} else {
+				const textNode = document.createTextNode(typedChar)
+				prefixSpan.after(textNode)
+			}
+			// Move caret after the typed character
+			const targetNode = prefixSpan.nextSibling as Text
+			const range = document.createRange()
+			range.setStart(targetNode, 1)
+			range.collapse(true)
+			selection.removeAllRanges()
+			selection.addRange(range)
+			return true
+		}
+
+		if (!validDelimiter) return false
+
+		// Insert into span: prepend for 'before', append for 'after'
+		if (position === 'before') {
+			prefixSpan.textContent = typedChar + (prefixSpan.textContent || '')
+		} else {
+			prefixSpan.textContent = (prefixSpan.textContent || '') + typedChar
+			setCaretAtEnd(prefixSpan, selection)
+		}
+
+		// After modifying the span, trigger block unwrap/reparse
+		return this.handleFocusedBlock(selection)
 	}
 }
 

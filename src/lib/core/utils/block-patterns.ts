@@ -117,3 +117,53 @@ export function isListPattern(content: string): boolean {
 		blockPatterns.listItem.test(content)
 	)
 }
+
+/**
+ * Set of supported block delimiters that can be typed/edited in focus mark spans.
+ * Used for validating block delimiter changes and detecting valid transitions.
+ *
+ * Note: Ordered list delimiters (1., 2., etc.) are validated separately via regex
+ * since they can be any number.
+ */
+export const SUPPORTED_BLOCK_DELIMITERS = new Set([
+	// Headings
+	'# ',
+	'## ',
+	'### ',
+	'#### ',
+	'##### ',
+	'###### ',
+
+	// Blockquote
+	'> ',
+
+	// Unordered lists
+	'- ',
+	'* ',
+	'+ '
+
+	// Ordered lists (1., 2., etc.) are validated via isValidOrderedListDelimiter()
+])
+
+/**
+ * Check if a string is a valid ordered list delimiter.
+ * Matches patterns like "1. ", "2. ", "10. ", etc.
+ *
+ * @param text - The text to validate
+ * @returns true if it's a valid ordered list delimiter
+ */
+export function isValidOrderedListDelimiter(text: string): boolean {
+	return blockPatterns.orderedList.test(text)
+}
+
+/**
+ * Check if a delimiter is a supported block delimiter.
+ * Handles both fixed delimiters (headings, blockquotes, unordered lists)
+ * and dynamic delimiters (ordered lists with any number).
+ *
+ * @param delimiter - The delimiter to validate
+ * @returns true if the delimiter is supported
+ */
+export function isSupportedBlockDelimiter(delimiter: string): boolean {
+	return SUPPORTED_BLOCK_DELIMITERS.has(delimiter) || isValidOrderedListDelimiter(delimiter)
+}
