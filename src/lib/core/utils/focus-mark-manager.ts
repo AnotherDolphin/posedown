@@ -659,7 +659,7 @@ export class FocusMarkManager {
 	 *   - target: 'open' | 'close' - which span the cursor is at (always 'open' for blocks)
 	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
 	 */
-	private isAtEdge2(selection: Selection): {
+	private isAtBlockEdge(selection: Selection): {
 		position: 'before' | 'after'
 		target: 'open' | 'close'
 		caretInSpan: boolean
@@ -704,48 +704,6 @@ export class FocusMarkManager {
 	}
 
 	/**
-	 * Check if cursor is at the edge of a block delimiter span.
-	 * Block elements only have opening delimiter spans at the start.
-	 *
-	 * @returns Object with position info, or null if not at edge
-	 *   - position: 'before' | 'after' - relative to the delimiter span
-	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
-	 */
-	private isAtBlockEdge(selection: Selection): {
-		position: 'before' | 'after'
-		caretInSpan: boolean
-	} | null {
-		if (!this.activeBlock || !selection.anchorNode || this.blockSpanRefs.length === 0) {
-			return null
-		}
-		if (selection.anchorNode.nodeType !== Node.TEXT_NODE) return null
-
-		const textNode = selection.anchorNode as Text
-		const offset = selection.anchorOffset
-		const [prefixSpan] = this.blockSpanRefs
-
-		const atStart = offset === 0
-		const atEnd = offset === textNode.textContent?.length
-		if (!atStart && !atEnd) return null
-
-		const parent = textNode.parentNode
-		const next = textNode.nextSibling
-		const prev = textNode.previousSibling
-
-		// Check if we're at the edge of the prefix span
-		// Either inside the span at its edges, or in adjacent text node
-		const atPrefixEdge =
-			parent === prefixSpan || (atEnd && next === prefixSpan) || (atStart && prev === prefixSpan)
-
-		if (!atPrefixEdge) return null
-
-		const caretInSpan = parent === prefixSpan
-		const position = caretInSpan ? (atStart ? 'before' : 'after') : atEnd ? 'before' : 'after'
-
-		return { position, caretInSpan }
-	}
-
-	/**
 	 * Handle typing characters in block focus mark spans.
 	 * Intercepts input to handle delimiter modifications (e.g., # → ## for h1 → h2).
 	 * Also handles escaping out of the span when typing non-delimiter characters.
@@ -755,7 +713,7 @@ export class FocusMarkManager {
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
 	public handleBlockMarkSpanEdges(selection: Selection, typedChar: string): boolean {
-		const edge = this.isAtEdge2(selection)
+		const edge = this.isAtBlockEdge(selection)
 		if (!edge) return false
 
 		const { position, caretInSpan, target } = edge

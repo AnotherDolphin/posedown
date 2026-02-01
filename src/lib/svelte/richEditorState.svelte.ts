@@ -75,13 +75,7 @@ export class RichEditorState {
 			this.editableRef.addEventListener('keydown', this.onKeydown)
 			this.editableRef.addEventListener('beforeinput', this.onBeforeInput)
 			document.addEventListener('selectionchange', this.onSelectionChange)
-			// let observer = observeTextBlock(this.editableRef, {
-			// 	// onNodeAdded: this.onNodeAdded
-			// 	// onNodeRemoved: this.onNodeRemoved,
-			// 	onTextChange: this.onTextChange
-			// })
 			return () => {
-				// observer()
 				this.editableRef?.removeEventListener('focus', this.onFocus)
 				this.editableRef?.removeEventListener('blur', this.onBlur)
 				this.editableRef?.removeEventListener('paste', this.onPaste)
@@ -92,18 +86,6 @@ export class RichEditorState {
 			}
 		})
 	}
-
-	// ============== observer callbacks ===============
-	// private onNodeAdded = (node: Node, parent: Node) => {
-	// 	console.log('add', node)
-	// }
-	// private onNodeRemoved = (node: Node, parent: Node) => {
-	// 	console.log('del')
-	// }
-	// private onTextChange = (node: Node, oldText: string, newText: string) => {
-	// 	console.log('text change', { node, oldText, newText })
-	// }
-	// ====================================================
 
 	private onPaste = (e: ClipboardEvent) => {
 		e.preventDefault()
@@ -168,8 +150,6 @@ export class RichEditorState {
 
 		range.insertNode(insertables)
 		if (!lastInsertable) return
-
-		// setCaretAfterExit(lastInsertable, selection)
 		setCaretAtEnd(lastInsertable, selection)
 
 		// Prevent FocusMarks from appearing on just-pasted formatted elements

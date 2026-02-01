@@ -2,7 +2,8 @@ import {
 	setCaretAtEnd,
 	getMainParentBlock,
 	findFirstMarkdownMatch,
-	isBlockPattern
+	isBlockPattern,
+	calculateCleanCursorOffset
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS } from '../focus/utils'
@@ -10,12 +11,7 @@ import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
 
-export const findAndTransform = (
-	editableRef: HTMLElement // cleanBlock: HTMLElement,
-	// block: HTMLElement,
-) // selection: Selection,
-// hasInlinePattern: { start: number; end: number; text: string; patternName: string; delimiterLength: number } | null
-: boolean => {
+export const findAndTransform = (editableRef: HTMLElement): boolean => {
 	const selection = window.getSelection()
 	if (!selection || !selection.anchorNode || !editableRef) return false
 
