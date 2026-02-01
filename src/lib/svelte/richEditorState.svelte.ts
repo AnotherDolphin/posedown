@@ -23,16 +23,12 @@ import {
 	endsWithValidDelimiter,
 	isEditorEmpty
 } from '../core/utils/dom'
-import { smartReplaceChildren } from '../core/dom'
-import {
-	setCaretAtEnd,
-	setCaretAfterExit,
-	setCaretAfter,
-	escapeCaretStyle
-} from '../core/utils/selection'
+import { getDomRangeFromContentOffsets } from '../core/dom'
+import { setCaretAtEnd } from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
 import { FocusMarkManager } from '../core/utils/focus-mark-manager'
-import { findAndTransform } from '$lib/core/transforms/transform'
+import { FOCUS_MARK_CLASS } from '../core/focus/utils'
+import { findAndTransform, type TransformResult } from '$lib/core/transforms/transform'
 
 // handle, enter on list, manually entering md syntax
 // reason for observer reinteg. node level tree updates,
@@ -193,12 +189,20 @@ export class RichEditorState {
 			return
 		}
 
-		
-
 		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
 
 		// future: optimize to only check current node for new marks instead of checking whole block
-		if (findAndTransform(this.editableRef)) {
+		const transformResult = findAndTransform(this.editableRef)
+		if (transformResult) {
+			const { caretOffset, newBlock } = transformResult
+			if (newBlock && caretOffset !== undefined) {
+				setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
+				this.focusMarkManager.update(selection, this.editableRef)
+				const range = getDomRangeFromContentOffsets(newBlock, caretOffset, caretOffset)
+				selection.removeAllRanges()
+				selection.addRange(range)
+			}
+
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
 			this.focusMarkManager.skipNextFocusMarks = true

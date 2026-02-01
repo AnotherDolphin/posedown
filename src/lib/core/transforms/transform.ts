@@ -2,7 +2,8 @@ import {
 	setCaretAtEnd,
 	getMainParentBlock,
 	findFirstMarkdownMatch,
-	isBlockPattern
+	isBlockPattern,
+	calculateCleanCursorOffset
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS } from '../focus/utils'
@@ -10,14 +11,16 @@ import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
 
-export const findAndTransform = (
-	editableRef: HTMLElement // cleanBlock: HTMLElement,
-	// block: HTMLElement,
-) // selection: Selection,
-// hasInlinePattern: { start: number; end: number; text: string; patternName: string; delimiterLength: number } | null
-: boolean => {
+export type TransformResult = {
+	/** Block caret offset (clean, excluding focus marks) - only set for block transforms */
+	caretOffset?: number
+	/** Reference to the new block element - only set for block transforms */
+	newBlock?: Element
+} | null
+
+export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	const selection = window.getSelection()
-	if (!selection || !selection.anchorNode || !editableRef) return false
+	if (!selection || !selection.anchorNode || !editableRef) return null
 
 	// was made because ctrl+a back/del preserves the node type of the first block element (eg. keeps a top header)
 	// also, a side effect of code is that emptying a single child automatically makes it a P (even w/o ctrl+a)
@@ -34,7 +37,7 @@ export const findAndTransform = (
 	// instead of the 'block' getting replaced, we want to replace all selected blocks
 
 	let block = getMainParentBlock(node, editableRef)
-	if (!block) return false
+	if (!block) return null
 
 	// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
 	// This prevents focus mark spans from rematching as markdown syntax.
@@ -46,7 +49,7 @@ export const findAndTransform = (
 	const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
 	const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
 
-	if (!hasBlockPattern && !hasInlinePattern) return false
+	if (!hasBlockPattern && !hasInlinePattern) return null
 
 	const contentInMd = htmlBlockToMarkdown(cleanBlock)
 
@@ -56,21 +59,22 @@ export const findAndTransform = (
 
 	// Parse back to DOM
 	const { fragment, isInline } = markdownToDomFragment(contentInMd)
-	if (isOnlyWhiteSpaceDifference(block, fragment)) return false
-	
+	if (isOnlyWhiteSpaceDifference(block, fragment)) return null
+
 	const lastNodeInFragment = fragment.lastChild
-	if (!fragment || !lastNodeInFragment) return false
+	if (!fragment || !lastNodeInFragment) return null
 
 	// Swap DOM and restore cursor using smartReplaceChildren
 	if (isInline) {
 		// Pass pattern match info for accurate cursor positioning
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
-	} else {
+		return {}
+	} else {		
+		const caretOffset = calculateCleanCursorOffset(block, selection)
+		const newBlock = fragment.firstChild as Element
 		block.replaceWith(fragment)
-		setCaretAtEnd(lastNodeInFragment, selection) // issue#8: undo last transform => input pattern again => error range not found
+		return { caretOffset, newBlock }
 	}
-
-	return true
 }
 
 const isOnlyWhiteSpaceDifference = (element: Node, fragment: Node | DocumentFragment) => {
