@@ -59,6 +59,8 @@
 - issue#76: fix caret offset when typing after open span istead of `setCaretAtEnd` ✅
   > used new `setCaretAt` with offset
 
+- issue#77: consecutive formatted elements causes caret them to jump to one of them on new similar pattern before thenm
+
 #### Blocks
 
 1. caret restoration ignores delimiter length ✅

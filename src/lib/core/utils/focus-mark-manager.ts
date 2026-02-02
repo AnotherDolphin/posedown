@@ -58,9 +58,11 @@ export class FocusMarkManager {
 		const focusedInline = this.findFocusedInline(selection, root)
 		const focusedBlock = this.findFocusedBlock(selection, root)
 
-		// 2. Handle inline transition (if focused element changed)
+		// 2. Handle inline transition (if focused element changed) or re-injection if marks were removed
 		// skipNextFocusMarks only affects inline marks (for just-transformed elements)
-		if (this.activeInline !== focusedInline) {
+		const needsInlineMarks = focusedInline && !this.activeInlineDelimiter
+
+		if (this.activeInline !== focusedInline || needsInlineMarks) {
 			// Eject marks from old element
 			if (this.activeInline) {
 				this.ejectMarks(this.activeInline)
@@ -78,8 +80,8 @@ export class FocusMarkManager {
 		if (this.skipNextFocusMarks) this.skipNextFocusMarks = false
 
 		// 3. Handle block transition or re-injection if marks were removed
-		const blockMarksExist = focusedBlock?.querySelector(`.${FOCUS_MARK_CLASS}`)
-		if (this.activeBlock !== focusedBlock || (focusedBlock && !blockMarksExist)) {
+		const needsBlockMarks = focusedBlock && !this.activeBlockDelimiter
+		if (this.activeBlock !== focusedBlock || needsBlockMarks) {
 			// Eject marks from old element (if different)
 			if (this.activeBlock && this.activeBlock !== focusedBlock) {
 				this.ejectMarks(this.activeBlock)
@@ -264,6 +266,8 @@ export class FocusMarkManager {
 		marks.forEach(mark => mark.remove())
 		this.inlineSpanRefs = []
 		this.blockSpanRefs = []
+		this.activeInlineDelimiter = null
+		this.activeBlockDelimiter = null
 		// WeakMap entries auto-cleaned when spans garbage collected
 
 		// Merge fragmented text nodes back together
