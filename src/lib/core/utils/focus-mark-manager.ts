@@ -10,7 +10,8 @@ import {
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
-import { smartReplaceChildren, reparse, buildBlockFragmentWithReplacement } from '../dom'
+import { smartReplaceChildren } from '../dom/smartReplaceChildren2'
+import { reparse, buildBlockFragmentWithReplacement } from '../dom'
 import { setCaretAtEnd, setCaretAt } from './selection'
 import {
 	extractInlineMarks,
@@ -50,7 +51,7 @@ export class FocusMarkManager {
 	 * Main update method - call this on selection change.
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
-	update(selection: Selection, root: HTMLElement, skipCaretCorrection = false): void {
+	update(selection: Selection, root: HTMLElement): void {
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
 
@@ -70,6 +71,11 @@ export class FocusMarkManager {
 
 			// Inject marks into new element (unless skipping)
 			if (focusedInline && !this.skipNextFocusMarks) {
+				// Infer skipCaretCorrection from DOM state:
+				// - If activeInline still connected → navigation (don't skip correction)
+				// - If activeInline disconnected → unwrap/edit (skip correction)
+				const isNavigating = !this.activeInline || this.activeInline.isConnected
+				const skipCaretCorrection = !isNavigating
 				this.injectInlineMarks(focusedInline, skipCaretCorrection)
 			}
 
@@ -279,10 +285,9 @@ export class FocusMarkManager {
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
 	 *
 	 * @param selection - Current selection for caret restoration
-	 * @param skipCaretCorrection - don't correct caret to end on reinjection
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapAndReparse(selection: Selection, skipCaretCorrection = false): boolean {
+	public unwrapAndReparse(selection: Selection): boolean {
 		const formattedElement = this.activeInline
 		if (!formattedElement) return false
 
@@ -299,7 +304,7 @@ export class FocusMarkManager {
 		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
-		this.editableRef && this.update(selection, this.editableRef, skipCaretCorrection)
+		this.editableRef && this.update(selection, this.editableRef)
 
 		return true
 	}
@@ -530,10 +535,7 @@ export class FocusMarkManager {
 		const { spansMirrored, spansDisconnected, invalidChanges } = this.checkAndMirrorSpans()
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spansMirrored || spansDisconnected || invalidChanges) {
-			// Skip caret correction if caret wasn't at end of end span
-			const edge = this.isAtEdge(selection)
-			const skipCorrection = !(edge?.position === 'after' && edge?.target === 'close')
-			this.unwrapAndReparse(selection, skipCorrection)
+			this.unwrapAndReparse(selection)
 			this.update(selection, this.editableRef!)
 			return true
 		}
