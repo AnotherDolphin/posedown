@@ -10,7 +10,7 @@ import {
 import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
-import { smartReplaceChildren } from '../dom/smartReplaceChildren2'
+import { smartReplaceChildren } from '../dom/smartReplaceChildren'
 import { reparse, buildBlockFragmentWithReplacement } from '../dom'
 import { setCaretAtEnd, setCaretAt } from './selection'
 import {

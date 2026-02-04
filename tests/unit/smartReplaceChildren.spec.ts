@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { smartReplaceChildren } from '../../src/lib/core/dom/smartReplaceChildren2'
+import { smartReplaceChildren } from '../../src/lib/core/dom/smartReplaceChildren'
 import { JSDOM } from 'jsdom'
 
 /**
@@ -230,12 +230,12 @@ describe('smartReplaceChildren', () => {
 		})
 
 		it('should restore caret to correct position after reinjecting focus marks', () => {
-			// Setup: <em><span>*</span>italic<span>*</span></em> with caret at END
+			// Setup: <em><span>*</span>italic<span>*</span></em> with caret at end of content
 			parent.innerHTML = '<em><span class="pd-focus-mark">*</span>italic<span class="pd-focus-mark">*</span></em>'
 			const em = parent.querySelector('em')!
 			const textNode = em.childNodes[1] as Text // "italic" text node
 			const range = document.createRange()
-			range.setStart(textNode, 6) // at end of "italic"
+			range.setStart(textNode, 6) // at end of "italic" (before closing delimiter)
 			range.collapse(true)
 			selection.removeAllRanges()
 			selection.addRange(range)
@@ -256,26 +256,17 @@ describe('smartReplaceChildren', () => {
 			const closingSpan = newStrong.lastChild as HTMLElement
 			expect(closingSpan.className).toBe('pd-focus-mark')
 
-			// STRICT VERIFICATION: Caret should be in/after the closing focus mark span
 			// After reinjection, structure is: <strong><span>*</span>italic<span>*</span></strong>
-			// Original offset was 8 (end of "*italic*")
-			// After subtracting delimiters: 8 - 2 = 6 (end of "italic")
-			// After reinjecting spans: caret should be adjusted to be AFTER/IN closing span
+			// Original caret was at end of "italic" content (offset 7 in "*italic*")
+			// Caret should stay at end of content text, not jump into closing span
+			// This matches e2e behavior: caret inside content stays inside content
 
 			const caretNode = selection.anchorNode
 			const caretOffset = selection.anchorOffset
-
-			// Expected: caret in closing span OR after strong element
-			// NOT in the middle of content text node
 			const contentTextNode = newStrong.childNodes[1] // "italic" text node
 
-			// This will FAIL if offset isn't adjusted after reinjection:
-			// The bug would place caret at offset 6 in content (middle of "italic")
-			// Correct behavior: caret at end of closing span or offset 8 in structure
-			const isInClosingSpan = caretNode === closingSpan || closingSpan.contains(caretNode)
-			const isAfterClosingSpan = caretNode === contentTextNode && caretOffset === 6 + 1 // adjusted
-
-			expect(isInClosingSpan || isAfterClosingSpan).toBe(true)
+			expect(caretNode).toBe(contentTextNode)
+			expect(caretOffset).toBe(6) // end of "italic"
 		})
 	})
 
