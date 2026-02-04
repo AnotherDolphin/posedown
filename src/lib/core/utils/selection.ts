@@ -1,4 +1,5 @@
 import { getMainParentBlock, insertAfter } from './dom'
+import { getDomRangeFromContentOffsets } from '../dom/util'
 
 /**
  * Container elements that don't directly hold text content
@@ -140,16 +141,14 @@ export async function escapeCaretStyle(
 
 /**
  * Sets the caret at a specific offset within a target node.
- * Creates a collapsed range at the specified position.
+ * Handles both text nodes and element nodes by converting content offset to proper DOM position.
  *
  * @param targetNode - The node to position the caret in
- * @param offset - The offset within the node (character position for text nodes)
+ * @param offset - The character offset within the node's text content
  * @param selection - The selection object to update
  */
-export function setCaretAt(targetNode: Node, offset: number, selection: Selection): void {
-	const range = document.createRange()
-	range.setStart(targetNode, offset)
-	range.collapse(true)
+export function setCaretAt(targetNode: Node | HTMLElement, offset: number, selection: Selection): void {
+	const range = getDomRangeFromContentOffsets(targetNode, offset)
 	selection.removeAllRanges()
 	selection.addRange(range)
 }

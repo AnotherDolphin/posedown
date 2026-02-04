@@ -206,7 +206,7 @@ export class FocusMarkManager {
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
 	private injectInlineMarks(element: HTMLElement, skipCaretCorrection = false): void {
-		// Skip if already marked
+		// Skip if already marked (refs should already be valid from smartReplaceChildren2 move)
 		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
 
 		// Extract delimiters by reverse-engineering from markdown
@@ -598,6 +598,7 @@ export class FocusMarkManager {
 		// Insert into span: prepend for 'before', append for 'after'
 		if (position === 'before') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
+			setCaretAt(targetSpan, typedChar.length, selection)
 		} else {
 			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
 			setCaretAtEnd(targetSpan, selection)
