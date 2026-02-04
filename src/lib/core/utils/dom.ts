@@ -330,7 +330,6 @@ export const handleBackspaceKey = (editable: HTMLElement, e: KeyboardEvent): boo
 	if (styledElement) {
 		const willRemoveAll = willBackspaceRemoveAllStyledText(selection, styledElement, e)
 		if (willRemoveAll) {
-			console.log('emptied')
 			escapeCaretStyle(styledElement, selection, editable) // issue: doesn't work with LI element
 		}
 		// return true?

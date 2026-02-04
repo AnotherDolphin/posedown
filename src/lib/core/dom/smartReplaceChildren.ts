@@ -1,6 +1,6 @@
 import { FOCUS_MARK_CLASS } from '../focus/utils'
 import { setCaretAtEnd } from '../utils/selection'
-import { getFirstTextNode, getDomRangeFromContentOffsets } from './util'
+import { getDomRangeFromContentOffsets } from './util'
 
 /**
  * Reconcile and replace a parent's child nodes from a new fragment while

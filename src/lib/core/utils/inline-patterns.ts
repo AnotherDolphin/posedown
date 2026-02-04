@@ -113,7 +113,6 @@ export function hasInlineSyntax(text: string): boolean {
 	return Object.entries(patterns).some(([name, pattern]) => {
 		pattern.lastIndex = 0 // Reset regex state
 		const isMatch = pattern.test(text)
-		isMatch && console.log(name)
 		return isMatch
 	})
 }
