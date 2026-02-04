@@ -1,21 +1,31 @@
 # FocusMarks - Current Status
 
-**Last Updated:** 2026-01-26
-**Latest Commit:** Multiple delimiter edit reparsing fixes
+**Last Updated:** 2026-02-04
+**Latest Commit:** Block marks editing + smartReplace refactoring
 
 > **For architecture, design decisions, and how it works**, see [../focusMarks-design.md](../focusMarks-design.md)
 
 ## Executive Summary
 
-**Status:** ✅ Production-ready with edge delimiter support
+**Status:** ✅ Production-ready with block editing (partial)
 
-Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Edge delimiter typing, marks escape, and delimiter edit reparsing fully implemented.
+Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Edge delimiter typing, marks escape, delimiter edit reparsing, and **block marks editing** (headings) fully implemented. Utilities extracted to [focus/utils.ts](../../src/lib/core/focus/utils.ts) for better modularity.
 
-## Recent Changes
+## Recent Changes (Last 2 Weeks)
 
-### 2026-01-26
-- ✅ **Multiple delimiter edit reparsing fixes** - Invalid changes now trigger proper reparse
-- ✅ Refactored `checkAndMirrorSpans` to track `invalidChanges` separately
+### Block Marks Editing (Jan 27 - Feb 1)
+- ✅ **Headings (H1-H6) fully editable** - Type `#` to upgrade, backspace to downgrade
+- ✅ Block transforms preserve inline formatting
+- ✅ Empty/new blocks show focus marks
+- ✅ Separate handlers for block/inline operations
+- ✅ New infrastructure: `block-patterns.ts`, test suite (336 lines)
+
+### Architecture Refactoring (Feb 2-4)
+- ✅ **SmartReplace auto caret restoration** - Removed manual correction from focus-mark-manager
+- ✅ **Utilities extraction** - Pure functions moved to `focus/utils.ts` (224 lines)
+- ✅ **Inline focus activation control** - Marks don't appear after pattern creation until refocus
+- ✅ setCaretAt now supports element nodes
+- ✅ New test suite for smartReplaceChildren (509 lines)
 
 ### 2026-01-25
 - ✅ **Issue #73 FIXED** - Typing inside end span (e.g., `*bold|*`) now triggers focus span edit
@@ -46,41 +56,47 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## What Works ✅
 
-**Core Features:**
-- Inline marks (bold, italic, code, strikethrough, del)
-- Block marks (headings, blockquotes, lists)
-- Marks eject on cursor leave
-- `skipNextFocusMarks` prevents marks after transformations
-- Span mirroring (edits sync between pairs)
+**Inline Marks:**
+- Display & editing: bold, italic, code, strikethrough, del
+- Real-time transformations: `**` → `*` changes bold to italic
+- Edge delimiter typing: Type `*` at edge of `*italic*` to upgrade to `**bold**`
+- Breaking delimiters: Type `*` inside `*italic*` to break pattern
+- Span mirroring: Edits sync between opening/closing delimiters
+- Marks escape: Typing at end exits formatting
 
-**Advanced Features:**
-- Real-time transformations (edit `**` → `*` to transform bold → italic)
-- **Edge delimiter typing (issue #7)** - type `*` at edge of `*italic*` to upgrade to `**bold**`
-- **Breaking delimiters (issue #10)** - type `*` inside `*italic*` breaks pattern
-- Edge detection (issue #34) - cursor adjacent to formatted elements
-- **Caret positioning (issue #81)** - correct positioning when approaching from right
-- Nested patterns - type `**bold**` inside `*italic*`
-- Delete/backspace before marks (issue #67)
-- Marks escape - typing at end of styled element exits formatting
+**Block Marks:**
+- Display: headings, blockquotes, lists
+- **Editing (headings H1-H6)**: Type `#` to upgrade, backspace to downgrade
+- Transforms preserve inline formatting
+- Shows marks even in empty blocks
+
+**Smart Behaviors:**
+- Marks eject on cursor leave
+- No marks after pattern creation (activation control)
+- Edge detection for cursor adjacent to elements
+- Correct caret positioning from any direction
+- Delete/backspace before marks works correctly
+
+**Architecture:**
+- SmartReplace auto caret restoration (no manual correction needed)
+- Modular utilities in `focus/utils.ts`
+- Separate block/inline handlers
 
 ## What's Broken / Incomplete
 
-### Partially Working ⏳
-**Cursor positioning edge cases** - 3/11 tests failing
-- Affects: Breaking delimiter transformations
-- Impact: UX polish (core functionality works)
-- Tests: [breaking-delimiters.spec.ts:66,149,186](../../tests/e2e/focus-marks/breaking-delimiters.spec.ts)
+**Block Marks (Partial):**
+- ✅ Headings work fully
+- ❌ Blockquotes: Editing `>` shows on separate line
+- ❌ Lists: Editing `-`/`1.` needs UX redesign
+- ❌ Codeblocks: Marks never show
+- 🔴 Open issues: querySelectorAll error, mark deletion merges blocks, invalid patterns disappear, H→P conversion
 
-### Not Implemented ⚠️
-**Block mark editing**
-- Editing `#` → `##` should change heading level
-- Editing `>` should unwrap blockquote
-- Editing `-`/`1.` should change list type
-- Requires different transformation strategy
+**Cursor Positioning:**
+- 3 edge cases in breaking delimiter transformations (UX polish)
+- Caret jumps when creating patterns before consecutive elements
 
-**List item UX**
-- Click should focus end of text, not span
-- Should hide default HTML markers when markdown marks shown
+**Not Implemented:**
+- List item UX (click focus, hide HTML markers)
 
 ## Test Results
 
@@ -104,59 +120,54 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## Next Steps
 
-### High Priority
-1. Fix 3 cursor position edge cases
-2. Add cursor assertions to transformation tests
+**High Priority:** Block issues #2, #3, #33 (errors), #77 (caret jump)
 
-### Medium Priority
-3. Implement block mark editing
-4. List item UX improvements
+**Medium Priority:** Blockquote/list editing, cursor edge cases, pattern normalization
 
-### Low Priority
-5. Performance profiling
-6. Animation/transitions
-7. Configurable styling
+**Low Priority:** Codeblock marks, list UX, performance profiling, animations
 
 ## Key Files
 
 See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integration-points) for architecture.
 
 **Core Implementation:**
-- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (661 lines) - All logic here
-  - Key APIs: `tryHandleEdgeInput()`, `isAtEdge()`, `wouldFormValidDelimiter()`, `checkAndMirrorSpans()`
+- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (~800 lines) - Main orchestration
+  - Key APIs: `tryHandleEdgeInput()`, `handleActiveInline()`, `handleActiveBlock()`
+  - State: `activeInline`, `activeBlock`, `inlineSpanRefs`, `blockSpanRefs`
+- [focus/utils.ts](../../src/lib/core/focus/utils.ts) (224 lines) - **NEW** Extracted utilities
+  - `extractInlineMarks()`, `extractBlockMarks()`, `createMarkSpan()`
+  - `atEdgeOfFormatted()`, `getSpanlessClone()`
+  - `wouldFormValidDelimiter()`, `wouldFormValidBlockDelimiter()`
+- [block-patterns.ts](../../src/lib/core/utils/block-patterns.ts) (50 lines) - **NEW** Block delimiter support
+  - `isSupportedBlockDelimiter()`, block delimiter validation
 - [richEditorState.svelte.ts](../../src/lib/svelte/richEditorState.svelte.ts) - Integration only
-  - New: `applyMarks()` (marks escape), consolidated `onBeforeInput` handling
+  - `applyMarks()` (marks escape), consolidated `onBeforeInput` handling
 
 **DOM Utilities:**
-- [smartReplaceChildren.ts](../../src/lib/core/dom/smartReplaceChildren.ts) - Smart reconciliation
+- [smartReplaceChildren.ts](../../src/lib/core/dom/smartReplaceChildren.ts) - **Enhanced** Smart reconciliation with auto caret restoration
 - [dom/util.ts](../../src/lib/core/dom/util.ts) - `reparse()`, cursor positioning
 - [dom.ts](../../src/lib/core/utils/dom.ts) - Tag lists, tree walking
+- [selection.ts](../../src/lib/core/utils/selection.ts) - `setCaretAt()` (now supports element nodes), `setCaretAtEnd()`
 
 **Tests:**
-- [tests/e2e/focus-marks/](../../tests/e2e/focus-marks/) - All test suites
+- [tests/e2e/focus-marks/](../../tests/e2e/focus-marks/) - All test suites (9 files)
+- [tests/e2e/focus-marks/block-delimiter-editing.spec.ts](../../tests/e2e/focus-marks/block-delimiter-editing.spec.ts) - **NEW** Block editing tests (336 lines)
+- [tests/unit/smartReplaceChildren.spec.ts](../../tests/unit/smartReplaceChildren.spec.ts) - **NEW** Unit tests (509 lines)
 
 ## Issue Tracker
 
-| Issue | Status | Notes |
-|-------|--------|-------|
-| #3/3.2 | ✅ Fixed | Caret restoration after deleting from end |
-| #5 | ✅ Fixed | setCaretAfter for new patterns inside activeElement |
-| #6 | ✅ Fixed | Focus spans preserved after pattern transformation |
-| #7 | ✅ Fixed | Edge delimiter typing (upgrade format at element edges) |
-| #7.1 | ✅ Fixed | Caret no longer jumps to end when adding delimiters |
-| #10 | ✅ Fixed | Breaking delimiters (8/11 tests, 3 cursor edge cases) |
-| #11 | ✅ Fixed | Single tilde for strikethrough |
-| #34 | ✅ Fixed | Edge detection |
-| #67 | ✅ Fixed | Delete before marks |
-| #71/71.1 | ✅ Fixed | Mirroring caret displacement |
-| #72 | ✅ Fixed | Typing between delimiters |
-| #73 | ✅ Fixed | Typing inside end span triggers edit |
-| #74 | ✅ Fixed | Empty element typing no longer doubles delimiters |
-| #75 | ✅ Fixed | Typing between delimiters predictable |
-| #81 | ✅ Fixed | Caret positioning when approaching from right |
-| #8 | 🔴 Open | Undo/redo "range not found" error |
-| #9 | 🔴 Open | Spans don't unwrap when delimiters become invalid |
-| #343 | 🔴 Open | Null error reading 'childNodes' |
-| - | ⏳ Partial | Cursor positioning (edge cases in caret-boundary tests) |
-| - | ⚠️ Not Impl | Block mark editing |
-| - | ⚠️ Not Impl | List UX |
+> See [focusmark-notes.md](./focusmark-notes.md) for complete issue history
+
+**Recently Fixed (Jan 26 - Feb 4):**
+- Edge delimiter typing, breaking delimiters, caret positioning
+- Mirroring, empty element typing, span edge editing
+- Block transforms, inline formatting preservation, activation control
+
+**Open Issues:**
+- #8: Undo/redo "range not found" error
+- #9: Spans don't unwrap when invalid
+- #77: Consecutive elements caret jump
+- #343: Null error reading 'childNodes'
+- Block #2-6: querySelectorAll error, mark deletion, invalid patterns, blockquote/codeblock/list issues
+
+**Status:** 16 major issues fixed in last 2 weeks, 9 open issues remaining
