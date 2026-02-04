@@ -873,7 +873,7 @@ test.describe('Rich Editor - Edge Delimiter Typing', () => {
 	})
 })
 
-test.describe('Focus Marks - Issue #71 Caret Logic', () => {
+test.describe('#71 Focus Mark Editing - Caret Displacement Logic', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto(EDITOR_URL)
 		await page.waitForLoadState('networkidle')
@@ -995,7 +995,7 @@ test.describe('Focus Marks - Issue #71 Caret Logic', () => {
 		}
 	})
 
-	// issue#71.1: typing * at end of italic (*text*|) should transform to bold and keep caret OUTSIDE
+	// typing * at end of italic (*text*|) should transform to bold and keep caret OUTSIDE
 	test('should keep caret OUTSIDE when typing * at end of closing span (*italic*| -> **italic**|)', async ({
 		page
 	}) => {
@@ -1122,4 +1122,81 @@ test.describe('Focus Marks - Issue #71 Caret Logic', () => {
 		// Should be in the text content "text"
 		expect(caretInfo?.textContent).toBe('text')
 	})
+
+	// should keep caret in the middle when typing a new delimiter before focus mark span (e.g., *bold|* -> **bold*|*)
+	test('should maintain caret position when typing before closing focus mark span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text: *bold*
+		await editor.pressSequentially('*bold*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('bold')
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Navigate to BEFORE the closing focus mark span
+		// Structure: [*]bold[*] - cursor after "bold" before closing span
+		await page.keyboard.press('End')
+		await page.keyboard.press('ArrowLeft') // Before closing span, after "bold"
+		debugger
+		await page.waitForTimeout(50)
+
+		// 4. Type * then X
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+		await page.keyboard.type('X')
+		await page.waitForTimeout(50)
+
+		// 5. Expected: "bold*X" - the * and X should be inserted after "bold" in sequence
+		const finalText = await editor.locator('p').textContent()
+		expect(finalText).toContain('bold*X*')
+	})
+
+	// should keep caret in the middle when typing a new delimiter before focus mark span (e.g., |*bold* -> *|*bold**)
+	test('should maintain caret position when typing before opening focus mark span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text: *bold*
+		await editor.pressSequentially('*bold*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('bold')
+
+		// 2. Click into italic to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Navigate to BEFORE the opening focus mark span (Home position)
+		await page.keyboard.press('Home')
+		await page.waitForTimeout(50)
+
+		// 4. Type * then X
+		await page.keyboard.type('*')
+		await page.waitForTimeout(100)
+		await page.keyboard.type('X')
+		await page.waitForTimeout(50)
+
+		// 5. Expected: "*X" followed by the italic "bold"
+		// The * and X should be inserted as literal text before the formatted element
+		const finalText = await editor.locator('p').textContent()
+		expect(finalText).toMatch(/^\*X.*bold/)
+	})
+
 })

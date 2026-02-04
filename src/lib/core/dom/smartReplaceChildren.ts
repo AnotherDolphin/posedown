@@ -1,3 +1,4 @@
+import { FOCUS_MARK_CLASS } from '../focus/utils'
 import { setCaretAtEnd } from '../utils/selection'
 import { getDomRangeFromContentOffsets } from './util'
 
@@ -43,6 +44,7 @@ export const smartReplaceChildren = (
 	let caretRestored = false
 	let caretFound = false
 	let offsetToCaret = Infinity
+	let delimiterOffsetDiff = 0
 
 	// Calculate text offset from parent start to caret position
 	if (anchorNode && parent.contains(anchorNode)) {
@@ -54,15 +56,24 @@ export const smartReplaceChildren = (
 
 	// Calculate removed delimiter offset if pattern matched
 	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
+    
 		if (offsetToCaret >= patternMatch.end) {
-			// ISSUE#1: IF CARET INSIDE FOCUS MARK, IT CAN EUQUAL 1 OR 2 AND END UP NEGATIVE
-			// Cursor AT or AFTER pattern → subtract both opening & closing delimiters
-			offsetToCaret -= patternMatch.delimiterLength * 2
+			// Cursor AFTER pattern → subtract both opening & closing delimiters
+			delimiterOffsetDiff = patternMatch.delimiterLength * 2
+		} else if (offsetToCaret >= patternMatch.end - patternMatch.delimiterLength) {
+			// cursor INSIDE end delimiter (e.g. *|*)
+      // todo
+      delimiterOffsetDiff = patternMatch.delimiterLength + (patternMatch.end - offsetToCaret)
 		} else if (offsetToCaret >= patternMatch.start + patternMatch.delimiterLength) {
-			// Cursor INSIDE pattern (after opening delimiter) → subtract opening only
-			offsetToCaret -= patternMatch.delimiterLength
+			// Cursor INSIDE pattern (after opening delimiter, before closing) → subtract opening only
+			delimiterOffsetDiff = patternMatch.delimiterLength
+		} else if (offsetToCaret >= patternMatch.start) {
+      // cursor INSIDE open delimiter
+      // todo
+      delimiterOffsetDiff = (offsetToCaret - patternMatch.start)
 		}
 		// If cursor is BEFORE pattern start → no adjustment needed
+		offsetToCaret -= delimiterOffsetDiff
 	}
 
 	const maxLength = Math.max(oldNodes.length, newNodes.length)
@@ -118,6 +129,22 @@ export const smartReplaceChildren = (
 
 		// 2. If cursor was here, start tracking it
 		if (hadCursor) caretFound = true
+
+		// Preserve focus marks if transforming to restore cursor position
+		const hasFocusSpans = [oldNode.firstChild, oldNode.lastChild].every(
+			n => n?.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className === FOCUS_MARK_CLASS
+		)
+
+		if (hadCursor && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
+			const openingSpan = oldNode.firstChild as HTMLElement
+			const closingSpan = oldNode.lastChild as HTMLElement
+
+			;(newNode as HTMLElement).prepend(openingSpan)
+			newNode.appendChild(closingSpan)
+
+			// Add back the delimiter offset that was subtracted earlier
+			offsetToCaret += delimiterOffsetDiff
+		}
 
 		// 3. Swap
 		parent.replaceChild(newNode, oldNode)
