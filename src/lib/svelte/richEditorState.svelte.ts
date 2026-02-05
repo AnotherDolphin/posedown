@@ -164,7 +164,7 @@ export class RichEditorState {
 		if (!selection || !selection.anchorNode || !this.editableRef) return false
 
 		// Handle both block and inline focus mark changes
-		if (this.focusMarkManager.handleInFocused(selection)) {
+		if (this.focusMarkManager.onEdit(selection)) {
 			this.history.push(this.editableRef)
 			return
 		}
@@ -177,7 +177,7 @@ export class RichEditorState {
 			const { caretOffset, newBlock } = transformResult
 			if (newBlock && caretOffset !== undefined) {
 				setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
-				this.focusMarkManager.update(selection, this.editableRef)
+				this.focusMarkManager.onRefocus(selection, this.editableRef)
 				const range = getDomRangeFromContentOffsets(newBlock, caretOffset, caretOffset)
 				selection.removeAllRanges()
 				selection.addRange(range)
@@ -203,14 +203,14 @@ export class RichEditorState {
 		// 1. Edge delimiter handling and escape behavior
 
 		// 1a. Block delimiter upgrade/escape (e.g., typing # at edge of # to make ##, or escaping to content)
-		if (this.focusMarkManager.handleBlockMarkSpanEdges(selection, e.data)) {
+		if (this.focusMarkManager.handleBlockMarkEdges(selection, e.data)) {
 			e.preventDefault()
 			this.history.push(this.editableRef)
 			return
 		}
 
 		// 1b. Inline delimiter upgrade (e.g., typing * at edge of *italic* to make **bold**)
-		if (this.focusMarkManager.handleInlineSpanEdges(selection, e.data)) {
+		if (this.focusMarkManager.handleInlineMarkEdges(selection, e.data)) {
 			e.preventDefault()
 			this.history.push(this.editableRef)
 			return
@@ -370,7 +370,7 @@ export class RichEditorState {
 		// ===== FocusMarks: Show markdown delimiters when cursor enters formatted elements =====
 		// This injects/ejects .pd-focus-mark spans dynamically based on cursor position
 		// Note: skipNextFocusMarks is handled inside update() - only affects inline marks
-		this.focusMarkManager.update(selection, this.editableRef)
+		this.focusMarkManager.onRefocus(selection, this.editableRef)
 
 		// ===== Exit Marks: Track styled elements where caret is at END (for exit-on-type) =====
 		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements

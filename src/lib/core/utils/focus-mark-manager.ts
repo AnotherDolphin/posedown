@@ -45,11 +45,13 @@ export class FocusMarkManager {
 		if (typeof window === 'undefined' || !window.document) return // to prevent sudden 500 errors. why?
 	}
 
+	// ============================ FOCUS HANDLING ===================================
+
 	/**
 	 * Main update method - call this on selection change.
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
-	update(selection: Selection, root: HTMLElement): void {
+	onRefocus(selection: Selection, root: HTMLElement): void {
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
 
@@ -278,6 +280,40 @@ export class FocusMarkManager {
 		element.normalize()
 	}
 
+	// ============================ EDIT HANDLING ===================================
+
+	/**
+	 * Main handler for both block and inline focus mark changes.
+	 * Call this in onInput to handle all focus mark editing scenarios.
+	 *
+	 * Processes in order:
+	 * 1. Block changes first (more structural, can affect inline elements)
+	 * 2. Inline changes second (more granular, contained within blocks)
+	 * moi: prob wrong order
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if any handling occurred, false otherwise
+	 */
+	public onEdit(selection: Selection): boolean {
+		// BLOCK FIRST - more structural, can replace/restructure DOM
+		if (this.activeBlock) {
+			const blockHandled = this.handleFocusedBlock(selection)
+			if (blockHandled) {
+				// Block was unwrapped/restructured - let next update() cycle handle inline detection
+				return true
+			}
+		}
+
+		// INLINE SECOND - more granular, only if block didn't restructure
+		if (this.activeInline) {
+			return this.onInlineMarkChange(selection)
+		}
+
+		return false
+	}
+
+	// ============================ REPARSING ===================================
+
 	/**
 	 * Unwraps the active inline element and re-parses for new patterns.
 	 * Used when focus mark spans are edited/disconnected or when breaking delimiters are typed.
@@ -285,7 +321,7 @@ export class FocusMarkManager {
 	 * @param selection - Current selection for caret restoration
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapAndReparse(selection: Selection): boolean {
+	public unwrapAndReparseInline(selection: Selection): boolean {
 		const formattedElement = this.activeInline
 		if (!formattedElement) return false
 
@@ -302,7 +338,7 @@ export class FocusMarkManager {
 		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
-		this.editableRef && this.update(selection, this.editableRef)
+		this.editableRef && this.onRefocus(selection, this.editableRef)
 
 		return true
 	}
@@ -314,7 +350,7 @@ export class FocusMarkManager {
 	 * @param selection - Current selection for caret restoration
 	 * @returns true if unwrap was performed, false otherwise
 	 */
-	public unwrapBlock(selection: Selection): boolean {
+	public unwrapAndReparseBlock(selection: Selection): boolean {
 		const blockElement = this.activeBlock
 		if (!blockElement) return false
 
@@ -331,7 +367,7 @@ export class FocusMarkManager {
 		// find cursor offset
 		const caretOffset = calculateCursorOffset(blockElement, selection)
 
-		 // move (and preserve) focus spans if present
+		// move (and preserve) focus spans if present
 		if (
 			this.blockSpanRefs.some(span => span.isConnected) &&
 			blockElement.firstElementChild?.className === FOCUS_MARK_CLASS
@@ -351,7 +387,7 @@ export class FocusMarkManager {
 		return true
 	}
 
-	// ============================ EDIT HANDLING ===================================
+	// ============================ INLINE EDIT HANDLING ===================================
 
 	/**
 	 * Check if spans are disconnected or modified, and handle mirroring.
@@ -422,7 +458,7 @@ export class FocusMarkManager {
 	 * @param selection Current selection for caret restoration
 	 * @returns true if breaking change was handled, false otherwise
 	 */
-	private handleBreakingDelimiters(selection: Selection): boolean {
+	private onInlineBreakingEdits(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// If activeInline received edit that breaks its previous pattern length
@@ -436,7 +472,7 @@ export class FocusMarkManager {
 		if (!hasBreakingChange) return false
 
 		// Find new best pattern
-		this.unwrapAndReparse(selection)
+		this.unwrapAndReparseInline(selection)
 		// Unfocus to skip showing marks (like regular typing)
 		this.skipNextFocusMarks = true
 		this.unfocus()
@@ -444,65 +480,7 @@ export class FocusMarkManager {
 
 		return true
 	}
-
-	/**
-	 * Main handler for both block and inline focus mark changes.
-	 * Call this in onInput to handle all focus mark editing scenarios.
-	 *
-	 * Processes in order:
-	 * 1. Block changes first (more structural, can affect inline elements)
-	 * 2. Inline changes second (more granular, contained within blocks)
-	 * moi: prob wrong order
-	 *
-	 * @param selection Current selection for caret restoration
-	 * @returns true if any handling occurred, false otherwise
-	 */
-	public handleInFocused(selection: Selection): boolean {
-		// BLOCK FIRST - more structural, can replace/restructure DOM
-		if (this.activeBlock) {
-			const blockHandled = this.handleFocusedBlock(selection)
-			if (blockHandled) {
-				// Block was unwrapped/restructured - let next update() cycle handle inline detection
-				return true
-			}
-		}
-
-		// INLINE SECOND - more granular, only if block didn't restructure
-		if (this.activeInline) {
-			return this.handleFocusedInline(selection)
-		}
-
-		return false
-	}
-
-	/**
-	 * Handle changes to active block element focus marks.
-	 * Detects when block delimiter spans are modified or disconnected.
-	 *
-	 * @param selection Current selection for caret restoration
-	 * @returns true if block handling occurred, false otherwise
-	 */
-	private handleFocusedBlock(selection: Selection): boolean {
-		if (!this.activeBlock) return false
-
-		const [prefixSpan] = this.blockSpanRefs
-		if (!prefixSpan) return false
-
-		// Check if span was disconnected or content changed
-		const newDelimiter = prefixSpan.textContent || ''
-		const spanChanged = !prefixSpan.isConnected || newDelimiter !== this.activeBlockDelimiter
-
-		if (!spanChanged) return false
-
-		// Unwrap and reparse - reparse(block, true) uses innerHTML which includes
-		// the edited span content (new delimiter), so it handles both valid and
-		// invalid delimiter changes automatically
-		this.unwrapBlock(selection)
-		this.activeBlockDelimiter = newDelimiter
-
-		return true
-	}
-
+	
 	/**
 	 * Handle changes to active inline element focus marks.
 	 * Checks for span modifications, nested patterns, and breaking delimiter edits.
@@ -510,15 +488,15 @@ export class FocusMarkManager {
 	 * @param selection Current selection for caret restoration
 	 * @returns true if inline handling occurred, false otherwise
 	 */
-	private handleFocusedInline(selection: Selection): boolean {
+	private onInlineMarkChange(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// 1. Check span status and handle mirroring
 		const { spansMirrored, spansDisconnected, invalidChanges } = this.checkAndMirrorSpans()
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spansMirrored || spansDisconnected || invalidChanges) {
-			this.unwrapAndReparse(selection)
-			this.update(selection, this.editableRef!)
+			this.unwrapAndReparseInline(selection)
+			this.onRefocus(selection, this.editableRef!)
 			return true
 		}
 
@@ -530,64 +508,14 @@ export class FocusMarkManager {
 		}
 
 		// 4. Check for breaking delimiter edits
-		if (this.handleBreakingDelimiters(selection)) {
+		if (this.onInlineBreakingEdits(selection)) {
 			return true
 		}
 
 		return false
 	}
 
-	// ============================ EDGE DELIMITER HANDLING ===================================
-
-	/**
-	 * Handle typing delimiter characters at the edges of focus mark spans.
-	 * Intercepts input to upgrade delimiters (e.g., * → ** for italic → bold).
-	 *
-	 * @param selection - Current selection
-	 * @param typedChar - The character being typed
-	 * @returns true if handled (caller should preventDefault), false otherwise
-	 */
-	public handleInlineSpanEdges(selection: Selection, typedChar: string): boolean {
-		const edge = this.isAtEdge(selection)
-		if (!edge) return false
-
-		const { position, target } = edge
-		const [startSpan, endSpan] = this.inlineSpanRefs
-		const targetSpan = target === 'open' ? startSpan : endSpan
-		const validDelimiter = wouldFormValidDelimiter(
-			this.activeInlineDelimiter || '',
-			position,
-			typedChar,
-			SUPPORTED_INLINE_DELIMITERS
-		)
-
-		// Special case: after opening span with invalid delimiter → insert into content
-		if (position === 'after' && target === 'open' && !validDelimiter) {
-			const contentNode = startSpan.nextSibling
-			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
-				contentNode.textContent = typedChar + (contentNode.textContent || '')
-			} else {
-				const textNode = document.createTextNode(typedChar)
-				startSpan.after(textNode)
-			}
-			// issue#76 fix: move caret after the typed character
-			setCaretAt(startSpan.nextSibling as Text, typedChar.length, selection)
-			return true
-		}
-
-		if (!validDelimiter) return false
-
-		// Insert into span: prepend for 'before', append for 'after'
-		if (position === 'before') {
-			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
-			setCaretAt(targetSpan, typedChar.length, selection)
-		} else {
-			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
-			setCaretAtEnd(targetSpan, selection)
-		}
-
-		return this.handleFocusedInline(selection)
-	}
+	// ============================ INLINE DELIMITER EDGE HANDLING ===================================
 
 	/**
 	 * Check if cursor is at the edge of activeInline.
@@ -598,7 +526,7 @@ export class FocusMarkManager {
 	 *   - target: 'open' | 'close' - which span the cursor is at
 	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
 	 */
-	private isAtEdge(selection: Selection): {
+	private isAtInlineMarkEdge(selection: Selection): {
 		position: 'before' | 'after'
 		target: 'open' | 'close'
 		caretInSpan: boolean
@@ -639,6 +567,58 @@ export class FocusMarkManager {
 	}
 
 	/**
+	 * Handle typing delimiter characters at the edges of focus mark spans.
+	 * Intercepts input to upgrade delimiters (e.g., * → ** for italic → bold).
+	 *
+	 * @param selection - Current selection
+	 * @param typedChar - The character being typed
+	 * @returns true if handled (caller should preventDefault), false otherwise
+	 */
+	public handleInlineMarkEdges(selection: Selection, typedChar: string): boolean {
+		const edge = this.isAtInlineMarkEdge(selection)
+		if (!edge) return false
+
+		const { position, target } = edge
+		const [startSpan, endSpan] = this.inlineSpanRefs
+		const targetSpan = target === 'open' ? startSpan : endSpan
+		const validDelimiter = wouldFormValidDelimiter(
+			this.activeInlineDelimiter || '',
+			position,
+			typedChar,
+			SUPPORTED_INLINE_DELIMITERS
+		)
+
+		// Special case: after opening span with invalid delimiter → insert into content
+		if (position === 'after' && target === 'open' && !validDelimiter) {
+			const contentNode = startSpan.nextSibling
+			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
+				contentNode.textContent = typedChar + (contentNode.textContent || '')
+			} else {
+				const textNode = document.createTextNode(typedChar)
+				startSpan.after(textNode)
+			}
+			// issue#76 fix: move caret after the typed character
+			setCaretAt(startSpan.nextSibling as Text, typedChar.length, selection)
+			return true
+		}
+
+		if (!validDelimiter) return false
+
+		// Insert into span: prepend for 'before', append for 'after'
+		if (position === 'before') {
+			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
+			setCaretAt(targetSpan, typedChar.length, selection)
+		} else {
+			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
+			setCaretAtEnd(targetSpan, selection)
+		}
+
+		return this.onInlineMarkChange(selection)
+	}
+
+	// ============================ BLOCK HANDLING ===================================
+
+	/**
 	 * Check if cursor is at the edge of activeBlock.
 	 * Detects cursor in adjacent text node or inside focus mark spans at their edges.
 	 * Block spans only have opening delimiters (no closing), so target is always 'open'.
@@ -648,7 +628,7 @@ export class FocusMarkManager {
 	 *   - target: 'open' | 'close' - which span the cursor is at (always 'open' for blocks)
 	 *   - caretInSpan: true if caret is inside the span, false if in adjacent content
 	 */
-	private isAtBlockEdge(selection: Selection): {
+	private isAtBlockMarkEdge(selection: Selection): {
 		position: 'before' | 'after'
 		target: 'open' | 'close'
 		caretInSpan: boolean
@@ -701,9 +681,9 @@ export class FocusMarkManager {
 	 * @param typedChar - The character being typed
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
-	public handleBlockMarkSpanEdges(selection: Selection, typedChar: string): boolean {
+	public handleBlockMarkEdges(selection: Selection, typedChar: string): boolean {
 		// debugger
-		const edge = this.isAtBlockEdge(selection)
+		const edge = this.isAtBlockMarkEdge(selection)
 		if (!edge) return false
 
 		const { position, caretInSpan, target } = edge
@@ -748,7 +728,40 @@ export class FocusMarkManager {
 		// After modifying the span, trigger block unwrap/reparse
 		return this.handleFocusedBlock(selection)
 	}
+
+	/**
+	 * Handle changes to active block element focus marks.
+	 * Detects when block delimiter spans are modified or disconnected.
+	 *
+	 * @param selection Current selection for caret restoration
+	 * @returns true if block handling occurred, false otherwise
+	 */
+	private handleFocusedBlock(selection: Selection): boolean {
+		if (!this.activeBlock) return false
+		debugger
+		const [prefixSpan] = this.blockSpanRefs
+		if (!prefixSpan) return false
+
+		// Check if span was disconnected or content changed
+		const newDelimiter = prefixSpan.textContent || ''
+		const spanChanged = !prefixSpan.isConnected || newDelimiter !== this.activeBlockDelimiter
+
+		// todo#1: call onBlockMarkChange to verify new span value (unwrapAndReparse can only work on correct(ed) content)
+
+		if (!spanChanged) return false
+
+		// Unwrap and reparse - reparse(block, true) uses innerHTML which includes
+		// the edited span content (new delimiter), so it handles both valid and
+		// invalid delimiter changes automatically
+		this.unwrapAndReparseBlock(selection)
+		this.activeBlockDelimiter = newDelimiter
+
+		return true
+	}
 }
+
+
+
 
 /**
  * Known issues:
