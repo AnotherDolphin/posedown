@@ -1,17 +1,15 @@
-import { htmlToMarkdown, markdownToDomFragment } from '../transforms/ast-utils'
 import {
-	getMainParentBlock,
 	INLINE_FORMATTED_TAGS,
 	BLOCK_FORMATTED_TAGS,
 	getFirstOfAncestors,
 	isInlineFormattedElement,
-	calculateCleanCursorOffset
+	calculateCleanCursorOffset,
+	calculateCursorOffset
 } from './dom'
-import { findAndTransform } from '../transforms/transform'
 import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
 import { smartReplaceChildren } from '../dom/smartReplaceChildren'
-import { reparse, buildBlockFragmentWithReplacement } from '../dom'
+import { reparse, buildBlockFragmentWithReplacement, getDomRangeFromContentOffsets } from '../dom'
 import { setCaretAtEnd, setCaretAt } from './selection'
 import {
 	extractInlineMarks,
@@ -320,22 +318,35 @@ export class FocusMarkManager {
 		const blockElement = this.activeBlock
 		if (!blockElement) return false
 
-		const parentBlock = blockElement.parentElement
-		if (!parentBlock) return false
+		// keep focus marks and reparse as is to get new block dom tag from md
+		const fragment = reparse(blockElement, true) as DocumentFragment // now has new and correct outer tag in firstChild, but no focus marks
+		const newBlock =
+			fragment.firstElementChild ||
+			(function () {
+				const p = document.createElement('p')
+				p.append(...(fragment.childNodes || document.createElement('br')))
+				return p
+			})()
 
-		// Clean focus marks first (like inline does)
-		this.ejectMarks(blockElement)
+		// find cursor offset
+		const caretOffset = calculateCursorOffset(blockElement, selection)
 
-		// Use reparse like inline does - preserves inline formatting
-		const fragment = reparse(blockElement, true) as DocumentFragment
+		 // move (and preserve) focus spans if present
+		if (
+			this.blockSpanRefs.some(span => span.isConnected) &&
+			blockElement.firstElementChild?.className === FOCUS_MARK_CLASS
+		)
+			newBlock.prepend(blockElement.firstElementChild!)
 
-		// Use same replacement pattern as inline
-		const newBlockFrag = buildBlockFragmentWithReplacement(parentBlock, blockElement, fragment)
-		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
-		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
+		// replace and restore caret
+		blockElement.replaceWith(newBlock)
+		const range = getDomRangeFromContentOffsets(newBlock, caretOffset)
+		range.collapse(true)
+		window.getSelection()?.removeAllRanges()
+		window.getSelection()?.addRange(range)
 
 		// Update focus marks after replacement
-		this.editableRef && this.update(selection, this.editableRef)
+		// this.editableRef && this.update(selection, this.editableRef)
 
 		return true
 	}
@@ -477,46 +488,17 @@ export class FocusMarkManager {
 		const [prefixSpan] = this.blockSpanRefs
 		if (!prefixSpan) return false
 
-		// Check if span was disconnected
-		if (!prefixSpan.isConnected) {
-			return this.unwrapBlock(selection)
-		}
-
-		// Check if span content changed
+		// Check if span was disconnected or content changed
 		const newDelimiter = prefixSpan.textContent || ''
-		if (newDelimiter === this.activeBlockDelimiter) {
-			return false
-		}
+		const spanChanged = !prefixSpan.isConnected || newDelimiter !== this.activeBlockDelimiter
 
-		// Check if new delimiter is valid
-		if (!isSupportedBlockDelimiter(newDelimiter)) {
-			// Invalid delimiter - unwrap to plain paragraph
-			return this.unwrapBlock(selection)
-		}
+		if (!spanChanged) return false
 
-		// Valid new delimiter - apply it
-		// Get content without the delimiter span, preserving inline formatting
-		const cleanBlock = this.activeBlock.cloneNode(true) as HTMLElement
-		cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-		cleanBlock.normalize()
-
-		// Use htmlToMarkdown to preserve inline formatting (not textContent which loses it)
-		const contentInMd = htmlToMarkdown(cleanBlock.innerHTML)
-
-		// Create new markdown with new delimiter
-		const newMarkdown = newDelimiter + contentInMd
-		const { fragment } = markdownToDomFragment(newMarkdown)
-
-		const newBlock = fragment.firstChild
-		if (!newBlock) return false
-
-		// Replace the heading element itself, NOT the parent
-		this.activeBlock.replaceWith(newBlock)
-		setCaretAtEnd(newBlock, selection)
-
-		// Update state and refresh focus marks
+		// Unwrap and reparse - reparse(block, true) uses innerHTML which includes
+		// the edited span content (new delimiter), so it handles both valid and
+		// invalid delimiter changes automatically
+		this.unwrapBlock(selection)
 		this.activeBlockDelimiter = newDelimiter
-		this.editableRef && this.update(selection, this.editableRef)
 
 		return true
 	}
@@ -720,6 +702,7 @@ export class FocusMarkManager {
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
 	public handleBlockMarkSpanEdges(selection: Selection, typedChar: string): boolean {
+		// debugger
 		const edge = this.isAtBlockEdge(selection)
 		if (!edge) return false
 

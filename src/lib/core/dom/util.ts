@@ -70,7 +70,7 @@ export const getDomRangeFromContentOffsets = (
 /**
  * Unwraps a formatted element into a document fragment containing its content.
  * Preserves nested formatting by converting to markdown and back.
- * #changed
+ *
  *
  * @param formattedElement - The formatted element to unwrap (e.g., <em>, <strong>)
  * @returns A DocumentFragment containing the unwrapped content
