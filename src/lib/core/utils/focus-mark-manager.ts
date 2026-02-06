@@ -376,14 +376,7 @@ export class FocusMarkManager {
 
 		// replace and restore caret
 		blockElement.replaceWith(newBlock)
-		const range = getDomRangeFromContentOffsets(newBlock, caretOffset)
-		range.collapse(true)
-		window.getSelection()?.removeAllRanges()
-		window.getSelection()?.addRange(range)
-
-		// Update focus marks after replacement
-		// this.editableRef && this.update(selection, this.editableRef)
-
+		setCaretAt(newBlock, caretOffset)
 		return true
 	}
 
@@ -480,7 +473,7 @@ export class FocusMarkManager {
 
 		return true
 	}
-	
+
 	/**
 	 * Handle changes to active inline element focus marks.
 	 * Checks for span modifications, nested patterns, and breaking delimiter edits.
@@ -598,7 +591,7 @@ export class FocusMarkManager {
 				startSpan.after(textNode)
 			}
 			// issue#76 fix: move caret after the typed character
-			setCaretAt(startSpan.nextSibling as Text, typedChar.length, selection)
+			setCaretAt(startSpan.nextSibling as Text, typedChar.length)
 			return true
 		}
 
@@ -607,7 +600,7 @@ export class FocusMarkManager {
 		// Insert into span: prepend for 'before', append for 'after'
 		if (position === 'before') {
 			targetSpan.textContent = typedChar + (targetSpan.textContent || '')
-			setCaretAt(targetSpan, typedChar.length, selection)
+			setCaretAt(targetSpan, typedChar.length)
 		} else {
 			targetSpan.textContent = (targetSpan.textContent || '') + typedChar
 			setCaretAtEnd(targetSpan, selection)
@@ -707,7 +700,7 @@ export class FocusMarkManager {
 				prefixSpan.after(textNode)
 			}
 			// Move caret after the typed character
-			setCaretAt(prefixSpan.nextSibling as Text, typedChar.length, selection)
+			setCaretAt(prefixSpan.nextSibling as Text, typedChar.length)
 			return true
 		}
 
@@ -719,7 +712,7 @@ export class FocusMarkManager {
 			if (caretInSpan) return false
 			// next code should not be reached for block spans
 			prefixSpan.textContent = typedChar + (prefixSpan.textContent || '')
-			setCaretAt(prefixSpan, typedChar.length, selection)
+			setCaretAt(prefixSpan, typedChar.length)
 		} else {
 			prefixSpan.textContent = (prefixSpan.textContent || '') + typedChar
 			setCaretAtEnd(prefixSpan, selection)
@@ -738,7 +731,7 @@ export class FocusMarkManager {
 	 */
 	private handleFocusedBlock(selection: Selection): boolean {
 		if (!this.activeBlock) return false
-		debugger
+
 		const [prefixSpan] = this.blockSpanRefs
 		if (!prefixSpan) return false
 
@@ -746,22 +739,21 @@ export class FocusMarkManager {
 		const newDelimiter = prefixSpan.textContent || ''
 		const spanChanged = !prefixSpan.isConnected || newDelimiter !== this.activeBlockDelimiter
 
-		// todo#1: call onBlockMarkChange to verify new span value (unwrapAndReparse can only work on correct(ed) content)
-
 		if (!spanChanged) return false
 
-		// Unwrap and reparse - reparse(block, true) uses innerHTML which includes
-		// the edited span content (new delimiter), so it handles both valid and
-		// invalid delimiter changes automatically
+		// If the new delimiter is invalid (e.g. "## " → "##"), flatten the span
+		if (!isSupportedBlockDelimiter(newDelimiter)) {
+			const offset = calculateCursorOffset(this.activeBlock, selection)
+			prefixSpan.replaceWith(document.createTextNode(newDelimiter))
+			setCaretAt(this.activeBlock, offset)
+		}
+
 		this.unwrapAndReparseBlock(selection)
-		this.activeBlockDelimiter = newDelimiter
+		this.onRefocus(selection, this.editableRef!)
 
 		return true
 	}
 }
-
-
-
 
 /**
  * Known issues:

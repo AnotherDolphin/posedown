@@ -78,7 +78,7 @@
 6. lists make no sense at all; can the native psuedo li marker be editable
 7. updating span to transform between h types (e.g. # to ##) falsely restores caret to end of block ✅
   > (actually) correct caret restore
-8. sometimes #'s also appear (duplicate) in the header content when pattern should become valid/invalid
+8. sometimes #'s also appear (duplicate) in the header content when pattern should become valid/invalid ✅
 9. trailing `/` on udpated header patterns
 
 
