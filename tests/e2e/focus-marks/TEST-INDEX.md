@@ -51,8 +51,8 @@ These files are in the root `focus-marks/` directory and will be migrated to the
 | ~~`caret-style-persistence.spec.ts`~~ | 166 | → `caret-positioning/style-persistence.spec.ts` | ✅ **Completed** |
 | `editing.spec.ts` | 187 | → Merge into appropriate folders | ⏳ Pending |
 | ~~`nested-transformations.spec.ts`~~ | 236 | → `pattern-detection/inline-patterns.spec.ts` | ✅ **Completed** |
-| `regression.spec.ts` | ~380 | → Split by category | ⏳ Pending |
-| `span-mirroring.spec.ts` | 1126 | → Split between `delimiter-editing/inline-mirroring.spec.ts` and `caret-positioning/editing.spec.ts` | ⏳ Pending |
+| ~~`regression.spec.ts`~~ | 514 | → Split into `transformation.spec.ts`, `suppression.spec.ts`, `inline-patterns.spec.ts` | ✅ **Completed** |
+| ~~`span-mirroring.spec.ts`~~ | 1126 | → Split between `delimiter-editing/inline-mirroring.spec.ts` and `caret-positioning/editing.spec.ts` | ✅ **Completed** |
 | ~~`span-persistence.spec.ts`~~ | ~200 | → `activation/span-persistence.spec.ts` | ✅ **Completed** |
 
 ---
@@ -60,14 +60,18 @@ These files are in the root `focus-marks/` directory and will be migrated to the
 ## Migration Progress
 
 - ✅ Phase 1: New directory structure created
-- 🔄 Phase 2: Move tests incrementally (6/10 files completed)
+- ✅ Phase 2: All tests migrated (10/10 files completed)
   - ✅ `caret-style-persistence.spec.ts` → `caret-positioning/style-persistence.spec.ts`
   - ✅ `caret-boundary-position.spec.ts` → `caret-positioning/navigation.spec.ts`
   - ✅ `block-delimiter-editing.spec.ts` → `delimiter-editing/block-editing.spec.ts`
   - ✅ `breaking-delimiters.spec.ts` → `delimiter-editing/breaking-delimiters.spec.ts`
   - ✅ `nested-transformations.spec.ts` → `pattern-detection/inline-patterns.spec.ts`
   - ✅ `span-persistence.spec.ts` → `activation/span-persistence.spec.ts`
-- ⏳ Phase 3: Cleanup and finalization
+  - ✅ `activation.spec.ts` → split into `activation/detection.spec.ts` + `suppression.spec.ts`
+  - ✅ `span-mirroring.spec.ts` → split into `delimiter-editing/inline-mirroring.spec.ts` + `caret-positioning/editing.spec.ts`
+  - ✅ `regression.spec.ts` → split into `transformation.spec.ts`, `suppression.spec.ts`, `inline-patterns.spec.ts`
+  - ✅ `editing.spec.ts` → merged into `delimiter-editing/inline-mirroring.spec.ts` (deleted earlier)
+- 🔄 Phase 3: Cleanup and finalization
 
 ---
 
