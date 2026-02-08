@@ -19,7 +19,8 @@ import {
 	atEdgeOfFormatted,
 	getSpanlessClone,
 	wouldFormValidDelimiter,
-	wouldFormValidBlockDelimiter
+	wouldFormValidBlockDelimiter,
+	BLOCK_FOCUS_MARK_CLASS
 } from '../focus/utils'
 
 /**
@@ -250,7 +251,7 @@ export class FocusMarkManager {
 		if (!delimiters) return
 
 		// Create prefix span
-		const prefixSpan = createMarkSpan(delimiters.start)
+		const prefixSpan = createMarkSpan(delimiters.start, true)
 
 		// Store reference and delimiter
 		this.blockSpanRefs = [prefixSpan]
@@ -366,13 +367,11 @@ export class FocusMarkManager {
 
 		// find cursor offset
 		const caretOffset = calculateCursorOffset(blockElement, selection)
+		const [prefixSpan, suffixSpan] = this.blockSpanRefs
 
-		// move (and preserve) focus spans if present
-		if (
-			this.blockSpanRefs.some(span => span.isConnected) &&
-			blockElement.firstElementChild?.className === FOCUS_MARK_CLASS
-		)
-			newBlock.prepend(blockElement.firstElementChild!)
+		// move (and preserve) focus spans if connected
+		if (prefixSpan?.isConnected) newBlock.prepend(prefixSpan)
+		if (suffixSpan?.isConnected) newBlock.append(suffixSpan)
 
 		// replace and restore caret
 		blockElement.replaceWith(newBlock)

@@ -6,7 +6,7 @@ import {
 	calculateCleanCursorOffset
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
-import { FOCUS_MARK_CLASS } from '../focus/utils'
+import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS } from '../focus/utils'
 import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
@@ -48,7 +48,6 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// Check for block patterns, with special handling for list patterns inside LIs
 	const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
 	const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
-
 	if (!hasBlockPattern && !hasInlinePattern) return null
 
 	const contentInMd = htmlBlockToMarkdown(cleanBlock)
@@ -66,10 +65,21 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Swap DOM and restore cursor using smartReplaceChildren
 	if (isInline) {
+		// Preserve block focus span across inline replacement.
+		// Without this, smartReplaceChildren destroys the span, leaving focusMarkManager
+		// state stale (blockSpanRefs[0] disconnected), which triggers unwrapAndReparseBlock
+		// on next input and incorrectly converts the block to a <p>.
+		const blockFocusSpan = block.firstElementChild?.classList?.contains(BLOCK_FOCUS_MARK_CLASS)
+			? block.firstElementChild : null
+		if (blockFocusSpan) blockFocusSpan.remove()
+
 		// Pass pattern match info for accurate cursor positioning
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
+
+		if (blockFocusSpan) block.prepend(blockFocusSpan)
+
 		return {}
-	} else {		
+	} else {
 		const caretOffset = calculateCleanCursorOffset(block, selection)
 		const newBlock = fragment.firstChild as Element
 		block.replaceWith(fragment)

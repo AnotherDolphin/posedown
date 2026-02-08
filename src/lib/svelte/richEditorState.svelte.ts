@@ -24,7 +24,7 @@ import {
 	isEditorEmpty
 } from '../core/utils/dom'
 import { getDomRangeFromContentOffsets } from '../core/dom'
-import { setCaretAtEnd } from '../core/utils/selection'
+import { setCaretAt, setCaretAtEnd } from '../core/utils/selection'
 import { EditorHistory } from '../core/history'
 import { FocusMarkManager } from '../core/utils/focus-mark-manager'
 import { FOCUS_MARK_CLASS } from '../core/focus/utils'
@@ -171,16 +171,14 @@ export class RichEditorState {
 
 		// =========================== NORMAL FLOW MD PATTERN DETECTION & TRANSFORMATION ===========================
 
-		// future: optimize to only check current node for new marks instead of checking whole block
+		// future: optimize to only check current node for new marks instead of checking whole block		
 		const transformResult = findAndTransform(this.editableRef)
 		if (transformResult) {
 			const { caretOffset, newBlock } = transformResult
 			if (newBlock && caretOffset !== undefined) {
 				setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
 				this.focusMarkManager.onRefocus(selection, this.editableRef)
-				const range = getDomRangeFromContentOffsets(newBlock, caretOffset, caretOffset)
-				selection.removeAllRanges()
-				selection.addRange(range)
+				setCaretAt(newBlock, caretOffset)
 			}
 
 			// Prevent FocusMarks from appearing on the just-transformed element

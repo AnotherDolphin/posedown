@@ -80,7 +80,8 @@
   > (actually) correct caret restore
 8. sometimes #'s also appear (duplicate) in the header content when pattern should become valid/invalid ✅
 9. trailing `/` on udpated header patterns
-
+10. inline transform in a header hides active block marks then on further input/typing unwraps the whole h to a p element ✅
+11. block mark edits non responsive after a new inline pattern ⏳
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅
