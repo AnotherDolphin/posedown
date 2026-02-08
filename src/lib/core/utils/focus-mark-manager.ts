@@ -271,11 +271,17 @@ export class FocusMarkManager {
 		// Remove all mark spans
 		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
 		marks.forEach(mark => mark.remove())
-		this.inlineSpanRefs = []
-		this.blockSpanRefs = []
-		this.activeInlineDelimiter = null
-		this.activeBlockDelimiter = null
-		// WeakMap entries auto-cleaned when spans garbage collected
+
+		// Only clear refs for the type of element being ejected.
+		// Ejecting inline marks (e.g. cursor leaving <strong>) must NOT wipe block state.
+		if (element === this.activeInline) {
+			this.inlineSpanRefs = []
+			this.activeInlineDelimiter = null
+		}
+		if (element === this.activeBlock) {
+			this.blockSpanRefs = []
+			this.activeBlockDelimiter = null
+		}
 
 		// Merge fragmented text nodes back together
 		element.normalize()
