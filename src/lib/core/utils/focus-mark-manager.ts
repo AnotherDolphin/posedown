@@ -680,13 +680,11 @@ export class FocusMarkManager {
 	 * @returns true if handled (caller should preventDefault), false otherwise
 	 */
 	public handleBlockMarkEdges(selection: Selection, typedChar: string): boolean {
-		// debugger
 		const edge = this.isAtBlockMarkEdge(selection)
 		if (!edge) return false
 
 		const { position, caretInSpan, target } = edge
 		const [prefixSpan] = this.blockSpanRefs
-		const targetSpan = prefixSpan
 
 		const validDelimiter = wouldFormValidBlockDelimiter(
 			this.activeBlockDelimiter || '',
@@ -701,6 +699,7 @@ export class FocusMarkManager {
 			if (contentNode && contentNode.nodeType === Node.TEXT_NODE) {
 				contentNode.textContent = typedChar + (contentNode.textContent || '')
 			} else {
+				contentNode && contentNode.nodeName === 'BR' && contentNode.remove() // remove placeholder BR
 				const textNode = document.createTextNode(typedChar)
 				prefixSpan.after(textNode)
 			}

@@ -7,7 +7,7 @@ import {
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS } from '../focus/utils'
-import { htmlBlockToMarkdown, markdownToDomFragment } from './ast-utils'
+import { domToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
 
@@ -50,7 +50,7 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
 	if (!hasBlockPattern && !hasInlinePattern) return null
 
-	const contentInMd = htmlBlockToMarkdown(cleanBlock)
+	const contentInMd = domToMarkdown(cleanBlock)
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
 	// this will parse invalid markdown (e.g., "*text**") and automatically

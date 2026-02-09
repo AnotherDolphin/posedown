@@ -79,9 +79,12 @@
 7. updating span to transform between h types (e.g. # to ##) falsely restores caret to end of block ✅
   > (actually) correct caret restore
 8. sometimes #'s also appear (duplicate) in the header content when pattern should become valid/invalid ✅
-9. trailing `\` on udpated header patterns
+9. trailing `\` on udpated header patterns ✅
+  > issue tracked down to be failure of first input into a header to remove BR tag like default browser behavior due to handleBlockMarkEdges override
+  > fixed with one line (702) in the fncs but left other tries commented out for now
 10. inline transform in a header hides active block marks then on further input/typing unwraps the whole h to a p element ✅
-11. block mark edits non responsive after a new inline pattern ⏳
+11. block mark edits non responsive after a new inline pattern ✅ (fixed with last commit i.e. ejectSpan update)
+12. deleting block focus spans to be invalid dones't properly flatten h into p
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅
