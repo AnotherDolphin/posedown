@@ -1,8 +1,20 @@
 # FocusMarks - Design Documentation
 
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-09
 
 > **For current implementation status and test results**, see [focusMarks-status.md](./issues/focusMarks-status.md)
+
+---
+
+**HOW TO UPDATE THIS DOCUMENT:**
+This is an **architecture and design reference**, not a changelog. Document the current system state only.
+- Update architecture sections when implementations change (new classes, APIs, data flows)
+- Keep descriptions current with actual code behavior
+- Remove outdated design decisions when superseded
+- For status updates, bug fixes, and history → use [focusMarks-status.md](./issues/focusMarks-status.md)
+- For issue tracking and temporal context → use [focusmark-notes.md](./issues/focusmark-notes.md)
+
+---
 
 ## Overview
 
@@ -66,7 +78,7 @@ FocusMarkManager (Core Implementation)
 Focus Utilities (Extracted helpers in focus/utils.ts)
 ├── extractInlineMarks() - Reverse-engineer inline delimiters (**, *, etc.)
 ├── extractBlockMarks() - Reverse-engineer block delimiters (#, ##, >, etc.)
-├── createMarkSpan() - Create styled delimiter span
+├── createMarkSpan(text, isBlock?) - Create styled delimiter span (adds BLOCK_FOCUS_MARK_CLASS if isBlock=true)
 ├── atEdgeOfFormatted() - Check if cursor at edge with formatted sibling
 ├── getSpanlessClone() - Clone element without focus mark spans
 ├── wouldFormValidDelimiter() - Validate inline delimiter upgrade
@@ -91,6 +103,7 @@ User moves cursor
   → findFocusedInline() + findFocusedBlock()
   → Compare with activeInline/activeBlock
   → ejectMarks(old) + injectMarks(new) if changed
+  → Block marks: only ejected if block element changes (preserves state during inline transforms)
 
 User types **bold**
   → Pattern detection creates <strong>
@@ -154,6 +167,11 @@ smartReplaceChildren() intelligently handles caret:
 
 **Span Stripping:** `getSpanlessClone()` removes `.pd-focus-mark` spans before pattern detection
 - Prevents interference with markdown parsing
+
+**CSS Classes:** Focus mark spans use dual classification
+- All marks: `.pd-focus-mark` (base styling, selection in getSpanlessClone)
+- Block marks only: `.pd-focus-mark-block` (additional class for preservation during inline transforms)
+- Separate class prevents `findAndTransform()` from stripping block marks during inline pattern detection
 
 ### 2. UX Principles
 
@@ -258,3 +276,5 @@ See implementations:
 - [dom/util.ts](../src/lib/core/dom/util.ts) - DOM utilities (reparse, cursor positioning)
 - [smartReplaceChildren.ts](../src/lib/core/dom/smartReplaceChildren.ts) - **Enhanced** Smart reconciliation with auto caret restoration
 - [selection.ts](../src/lib/core/utils/selection.ts) - **Enhanced** setCaretAt now supports element nodes
+- [block-transformation.spec.ts](../../tests/e2e/focus-marks/delimiter-editing/block-transformation.spec.ts) - Block type conversions (756 lines)
+- [TEST-INDEX.md](../../tests/e2e/focus-marks/TEST-INDEX.md) - Test organization by behavior categories

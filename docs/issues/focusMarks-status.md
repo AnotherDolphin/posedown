@@ -1,6 +1,6 @@
 # FocusMarks - Current Status
 
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-09
 **Latest Commit:** Block marks editing + smartReplace refactoring
 
 > **For architecture, design decisions, and how it works**, see [../focusMarks-design.md](../focusMarks-design.md)
@@ -26,6 +26,13 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 - ✅ **Inline focus activation control** - Marks don't appear after pattern creation until refocus
 - ✅ setCaretAt now supports element nodes
 - ✅ New test suite for smartReplaceChildren (509 lines)
+
+### 2026-02-06 to 2026-02-09
+- ✅ **Issue #9 FIXED** - BR tag removal prevents trailing backslash in updated headers
+- ✅ **Issue #10 FIXED** - Block span preservation with `BLOCK_FOCUS_MARK_CLASS` during inline transforms
+- ✅ **Issue #11 FIXED** - Conditional `ejectMarks()` state clearing keeps block edits responsive
+- ✅ **Test reorganization complete** - 10 files moved to 4 behavioral categories
+- ✅ New test suite: `block-transformation.spec.ts` (756 lines)
 
 ### 2026-01-25
 - ✅ **Issue #73 FIXED** - Typing inside end span (e.g., `*bold|*`) now triggers focus span edit
@@ -84,12 +91,13 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## What's Broken / Incomplete
 
-**Block Marks (Partial):**
-- ✅ Headings work fully
+**Block Marks (Improved):**
+- ✅ Headings work fully (issues #9, #10, #11 fixed)
+- ✅ Block marks persist during inline transformations
+- ✅ Invalid delimiter flattening works
 - ❌ Blockquotes: Editing `>` shows on separate line
 - ❌ Lists: Editing `-`/`1.` needs UX redesign
 - ❌ Codeblocks: Marks never show
-- 🔴 Open issues: querySelectorAll error, mark deletion merges blocks, invalid patterns disappear, H→P conversion
 
 **Cursor Positioning:**
 - 3 edge cases in breaking delimiter transformations (UX polish)
@@ -153,6 +161,8 @@ See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integra
 - [tests/e2e/focus-marks/](../../tests/e2e/focus-marks/) - All test suites (9 files)
 - [tests/e2e/focus-marks/block-delimiter-editing.spec.ts](../../tests/e2e/focus-marks/block-delimiter-editing.spec.ts) - **NEW** Block editing tests (336 lines)
 - [tests/unit/smartReplaceChildren.spec.ts](../../tests/unit/smartReplaceChildren.spec.ts) - **NEW** Unit tests (509 lines)
+- [block-transformation.spec.ts](../../tests/e2e/focus-marks/delimiter-editing/block-transformation.spec.ts) - Block type conversion tests (756 lines)
+- [TEST-INDEX.md](../../tests/e2e/focus-marks/TEST-INDEX.md) - Test organization guide
 
 ## Issue Tracker
 
@@ -165,9 +175,8 @@ See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integra
 
 **Open Issues:**
 - #8: Undo/redo "range not found" error
-- #9: Spans don't unwrap when invalid
 - #77: Consecutive elements caret jump
 - #343: Null error reading 'childNodes'
-- Block #2-6: querySelectorAll error, mark deletion, invalid patterns, blockquote/codeblock/list issues
+- Block #2-6: querySelectorAll error, mark deletion, blockquote/codeblock/list issues
 
 **Status:** 16 major issues fixed in last 2 weeks, 9 open issues remaining
