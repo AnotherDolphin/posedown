@@ -14,6 +14,7 @@ This document maps test categories to their file locations and related issues.
 | **Delimiter Editing** | | | |
 | └─ Inline Mirroring | `delimiter-editing/inline-mirroring.spec.ts` | Opening/closing span mirroring, upgrading formats | - |
 | └─ Block Editing | `delimiter-editing/block-editing.spec.ts` | Heading, blockquote, list marker editing | - |
+| └─ Block Transformation | `delimiter-editing/block-transformation.spec.ts` | unwrapBlock logic, block type conversions, caret preservation | - |
 | └─ Breaking Delimiters | `delimiter-editing/breaking-delimiters.spec.ts` | Typing delimiters in middle, pattern breaking | #10 |
 | **Activation** | | | |
 | └─ Detection | `activation/detection.spec.ts` | Edge sibling detection, when marks appear | #34 |
@@ -71,7 +72,7 @@ These files are in the root `focus-marks/` directory and will be migrated to the
   - ✅ `span-mirroring.spec.ts` → split into `delimiter-editing/inline-mirroring.spec.ts` + `caret-positioning/editing.spec.ts`
   - ✅ `regression.spec.ts` → split into `transformation.spec.ts`, `suppression.spec.ts`, `inline-patterns.spec.ts`
   - ✅ `editing.spec.ts` → merged into `delimiter-editing/inline-mirroring.spec.ts` (deleted earlier)
-- 🔄 Phase 3: Cleanup and finalization
+- ✅ Phase 3: Cleanup and finalization complete
 
 ---
 

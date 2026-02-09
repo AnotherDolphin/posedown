@@ -185,10 +185,10 @@ tests/e2e/focus-marks/
 
 ### 📊 Final Results
 - **Before:** 10 files in root directory (avg 380 lines, max 1126)
-- **After:** 11 files across 4 behavior categories (max 407 lines)
+- **After:** 12 files across 4 behavior categories (avg 350 lines, max 700 lines)
   - activation/ (3 files)
   - caret-positioning/ (4 files)
-  - delimiter-editing/ (3 files)
+  - delimiter-editing/ (4 files) - includes block-transformation.spec.ts from merge
   - pattern-detection/ (1 file)
 - All tests passing (same pass rate as before)
 - CI green
