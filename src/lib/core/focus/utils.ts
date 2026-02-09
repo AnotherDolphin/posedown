@@ -8,6 +8,11 @@ import { isInlineFormattedElement } from '../utils/dom'
 export const FOCUS_MARK_CLASS = 'pd-focus-mark'
 
 /**
+ * Class name for block focus mark spans (used in addition to FOCUS_MARK_CLASS)
+ */
+export const BLOCK_FOCUS_MARK_CLASS = 'pd-focus-mark-block'
+
+/**
  * Extract markdown delimiters for inline formatted elements (bold, italic, code, etc.).
  *
  * Converts the element to markdown and compares with plain text content.
@@ -123,11 +128,13 @@ export function extractBlockMarks(element: HTMLElement): { start: string } | nul
  * Spans inherit contentEditable from parent, so users can modify delimiters to unwrap formatting.
  *
  * @param text - The delimiter text to display in the span
+ * @param isBlock - Whether this is a block focus mark (adds BLOCK_FOCUS_MARK_CLASS in addition to FOCUS_MARK_CLASS)
  * @returns A span element with the focus mark class
  */
-export function createMarkSpan(text: string): HTMLSpanElement {
+export function createMarkSpan(text: string, isBlock = false): HTMLSpanElement {
 	const span = document.createElement('span')
 	span.className = FOCUS_MARK_CLASS
+	if (isBlock) span.classList.add(BLOCK_FOCUS_MARK_CLASS)
 	span.textContent = text
 	// Note: contentEditable inherited from parent editor div
 	return span
@@ -190,9 +197,7 @@ export function wouldFormValidDelimiter(
 	if (!currentDelimiter) return false
 
 	const potentialDelimiter =
-		position === 'after'
-			? currentDelimiter + typedChar
-			: typedChar + currentDelimiter
+		position === 'after' ? currentDelimiter + typedChar : typedChar + currentDelimiter
 
 	return supportedDelimiters.has(potentialDelimiter)
 }
@@ -216,9 +221,7 @@ export function wouldFormValidBlockDelimiter(
 	if (!currentDelimiter) return false
 
 	const potentialDelimiter =
-		position === 'after'
-			? currentDelimiter + typedChar
-			: typedChar + currentDelimiter
+		position === 'after' ? currentDelimiter + typedChar : typedChar + currentDelimiter
 
 	return validateFn(potentialDelimiter)
 }

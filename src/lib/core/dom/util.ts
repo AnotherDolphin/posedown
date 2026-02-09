@@ -70,7 +70,7 @@ export const getDomRangeFromContentOffsets = (
 /**
  * Unwraps a formatted element into a document fragment containing its content.
  * Preserves nested formatting by converting to markdown and back.
- * #changed
+ *
  *
  * @param formattedElement - The formatted element to unwrap (e.g., <em>, <strong>)
  * @returns A DocumentFragment containing the unwrapped content
@@ -83,6 +83,9 @@ export const reparse = (
 	unwrap = false
 ): DocumentFragment | Node => {
 	const clone = formattedElement.cloneNode(true) as HTMLElement
+	// Strip trailing <br> (contenteditable artifact) before markdown conversion
+	// to prevent it from becoming a hard line break backslash in the output
+	// if (clone.lastChild?.nodeName === 'BR') clone.lastChild.remove() // +1 fail if comm
 	clone.normalize()
 	const md = unwrap ? htmlToMarkdown(clone.innerHTML) : htmlToMarkdown(clone.outerHTML) // currently supports inline elements, can use htmlBlockToMarkdown for block use later
 	const { fragment } = markdownToDomFragment(md)

@@ -519,3 +519,30 @@ export function calculateCleanCursorOffset(element: HTMLElement, selection: Sele
 	traverse(element)
 	return offset
 }
+
+/**
+ * Calculates the full cursor offset within an element, including all content.
+ * Unlike calculateCleanCursorOffset, this includes focus mark spans in the count.
+ */
+export function calculateCursorOffset(element: HTMLElement, selection: Selection): number {
+	const anchorNode = selection.anchorNode
+	if (!anchorNode || !element.contains(anchorNode)) return 0
+
+	let offset = 0
+	const traverse = (node: Node): boolean => {
+		if (node === anchorNode) {
+			offset += selection.anchorOffset
+			return true
+		}
+		if (node.nodeType === Node.TEXT_NODE) {
+			offset += node.textContent?.length || 0
+		} else if (node.nodeType === Node.ELEMENT_NODE) {
+			for (let i = 0; i < node.childNodes.length; i++) {
+				if (traverse(node.childNodes[i])) return true
+			}
+		}
+		return false
+	}
+	traverse(element)
+	return offset
+}

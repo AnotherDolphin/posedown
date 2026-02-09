@@ -89,7 +89,7 @@ export function setCaretAfterExit(node: Node, selection: Selection): Text | null
 /**
  * Sets cursor position directly after a node without creating exit nodes.
  * Used when you want cursor immediately after an element without intermediary text.
- * 
+ *
  * @deprecated setCaretAtEnd is safer
  * @param node - The node to position cursor after
  * @param selection - Optional selection object (defaults to window.getSelection())
@@ -147,8 +147,10 @@ export async function escapeCaretStyle(
  * @param offset - The character offset within the node's text content
  * @param selection - The selection object to update
  */
-export function setCaretAt(targetNode: Node | HTMLElement, offset: number, selection: Selection): void {
+export function setCaretAt(targetNode: Node | HTMLElement, offset: number): void {
 	const range = getDomRangeFromContentOffsets(targetNode, offset)
-	selection.removeAllRanges()
-	selection.addRange(range)
+	range.collapse(true)
+	const sel = window.getSelection()
+	sel?.removeAllRanges()
+	sel?.addRange(range)
 }

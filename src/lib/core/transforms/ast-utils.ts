@@ -149,7 +149,11 @@ function unfoldAsFragment(hast: HastNodes) {
  * @param textContent - The plain text content (for pattern detection)
  * @returns Markdown string with pattern + preserved inline formatting
  */
-export function htmlBlockToMarkdown(blockElement: HTMLElement): string {
+export function domToMarkdown(blockElement: HTMLElement): string {
+
+	// const clone = blockElement.cloneNode(true) as HTMLElement
+	// if (clone.lastChild?.nodeName === 'BR') clone.lastChild.remove()
+
 	// Extract the pattern prefix from plain text
 	const patternPrefix = extractPatternPrefix(blockElement.textContent)
 	if (!patternPrefix) {

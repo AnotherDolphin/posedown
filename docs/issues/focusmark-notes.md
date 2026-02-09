@@ -69,14 +69,22 @@
 2. Uncaught (in promise) TypeError: cleanBlock.querySelectorAll is not a function
     at findAndTransform (transform.ts:42:13)
     at HTMLDivElement.onInput (richEditorState.svelte.ts:205:7)
-3. deleting all block marks converts content to text and MERGES with previous P block
+3. deleting all block marks converts content to text and MERGES with previous P block ✅
 31. changing block format (ex h1=>h2) removes all inline formats ✅
-32. block delimiters don't normalize but disappear if pattern becomes invalid
+32. block delimiters don't normalize but disappear if pattern becomes invalid ✅
 33. onBefore does something that makes the first character after an inline transform make the H block element a P
 4. blockquote focus mark shows on its on line when focused `<blockquote><span><p> ...`
 5. codeblock marks never show
 6. lists make no sense at all; can the native psuedo li marker be editable
-
+7. updating span to transform between h types (e.g. # to ##) falsely restores caret to end of block ✅
+  > (actually) correct caret restore
+8. sometimes #'s also appear (duplicate) in the header content when pattern should become valid/invalid ✅
+9. trailing `\` on udpated header patterns ✅
+  > issue tracked down to be failure of first input into a header to remove BR tag like default browser behavior due to handleBlockMarkEdges override
+  > fixed with one line (702) in the fncs but left other tries commented out for now
+10. inline transform in a header hides active block marks then on further input/typing unwraps the whole h to a p element ✅
+11. block mark edits non responsive after a new inline pattern ✅ (fixed with last commit i.e. ejectSpan update)
+12. deleting block focus spans to be invalid dones't properly flatten h into p
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅
