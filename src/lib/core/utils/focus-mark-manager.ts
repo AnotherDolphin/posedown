@@ -22,6 +22,7 @@ import {
 	wouldFormValidBlockDelimiter,
 	BLOCK_FOCUS_MARK_CLASS
 } from '../focus/utils'
+import { isBlockTagName } from './block-marks'
 
 /**
  * Manages focus marks - dynamic delimiter injection for markdown formatting.
@@ -364,12 +365,13 @@ export class FocusMarkManager {
 		// keep focus marks and reparse as is to get new block dom tag from md
 		const fragment = reparse(blockElement, true) as DocumentFragment // now has new and correct outer tag in firstChild, but no focus marks
 		const newBlock =
-			fragment.firstElementChild ||
-			(function () {
-				const p = document.createElement('p')
-				p.append(...(fragment.childNodes || document.createElement('br')))
-				return p
-			})()
+			fragment.firstElementChild && isBlockTagName(fragment.firstElementChild.tagName)
+				? fragment.firstElementChild
+				: (function () {
+						const p = document.createElement('p')
+						p.append(...(fragment.childNodes || document.createElement('br')))
+						return p
+					})()
 
 		// find cursor offset
 		const caretOffset = calculateCursorOffset(blockElement, selection)
@@ -745,11 +747,16 @@ export class FocusMarkManager {
 
 		if (!spanChanged) return false
 
-		// If the new delimiter is invalid (e.g. "## " → "##"), flatten the span
 		if (!isSupportedBlockDelimiter(newDelimiter)) {
+			// flatten, no need to run unwrapAndReparse
 			const offset = calculateCursorOffset(this.activeBlock, selection)
 			prefixSpan.replaceWith(document.createTextNode(newDelimiter))
-			setCaretAt(this.activeBlock, offset)
+			const p = document.createElement('p')
+			while (this.activeBlock.firstChild) p.appendChild(this.activeBlock.firstChild)
+			this.activeBlock.replaceWith(p)
+			setCaretAt(p, offset)
+			this.onRefocus(selection, this.editableRef!)
+			return true
 		}
 
 		this.unwrapAndReparseBlock(selection)

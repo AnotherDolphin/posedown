@@ -83,8 +83,10 @@
   > issue tracked down to be failure of first input into a header to remove BR tag like default browser behavior due to handleBlockMarkEdges override
   > fixed with one line (702) in the fncs but left other tries commented out for now
 10. inline transform in a header hides active block marks then on further input/typing unwraps the whole h to a p element ✅
-11. block mark edits non responsive after a new inline pattern ✅ (fixed with last commit i.e. ejectSpan update)
-12. deleting block focus spans to be invalid dones't properly flatten h into p
+11. block mark edits non responsive after a new inline pattern ✅
+12. deleting block focus spans to be invalid dones't properly flatten h into p ✅
+  > handled invalid spans without unwrapAndReparseBlock to prevent leftover preceding space collapse due to md pipeleine
+13. undo/redo destroy blockSpanRefs and injectBlockMarks fails to restore/reassign them due to early return
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅
