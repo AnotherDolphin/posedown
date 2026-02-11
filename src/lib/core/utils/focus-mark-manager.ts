@@ -38,8 +38,8 @@ export class FocusMarkManager {
 	activeBlock: HTMLElement | null = null
 	activeInlineDelimiter: string | null = null
 	activeBlockDelimiter: string | null = null
-	inlineSpanRefs: Array<HTMLElement> = []
-	blockSpanRefs: Array<HTMLElement> = []
+	inlineSpanRefs: Array<HTMLElement | Element> = []
+	blockSpanRefs: Array<HTMLElement | Element> = []
 	skipNextFocusMarks = false
 	private editableRef: HTMLElement | null = null // should this be even here
 
@@ -208,8 +208,13 @@ export class FocusMarkManager {
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
 	private injectInlineMarks(element: HTMLElement, skipCaretCorrection = false): void {
-		// Skip if already marked (refs should already be valid from smartReplaceChildren2 move)
-		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
+		// if correct spans exist update refs instead of injecting new spans (handles undo/redo case)
+		const existingSpans = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
+		if (existingSpans.length > 0) {
+			this.inlineSpanRefs = [...existingSpans]
+			this.activeInlineDelimiter = existingSpans[0]?.textContent || ''
+			return
+		}
 
 		// Extract delimiters by reverse-engineering from markdown
 		const delimiters = extractInlineMarks(element)
@@ -244,10 +249,15 @@ export class FocusMarkManager {
 	 * Example: <h1>text</h1> → <h1><span># </span>text</h1>
 	 */
 	private injectBlockMarks(element: HTMLElement): void {
-		// Skip if already marked
-		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
+		// if correct spans exist update refs instead of injecting new spans (handles undo/redo case)
+		const existingSpans = element.querySelectorAll(`.${BLOCK_FOCUS_MARK_CLASS}`)
+		if (existingSpans.length > 0) {
+			this.blockSpanRefs = [...existingSpans]
+			this.activeBlockDelimiter = existingSpans[0].textContent || ''
+			return
+		}
 
-		// Extract delimiter prefix
+		// Extract prefix delimiter
 		const delimiters = extractBlockMarks(element)
 		if (!delimiters) return
 
@@ -266,12 +276,11 @@ export class FocusMarkManager {
 	 * Remove all focus mark spans from an element and normalize text nodes.
 	 */
 	private ejectMarks(element: HTMLElement): void {
-		// Early exit if element was removed from DOM
-		if (!element.isConnected) return
-
-		// Remove all mark spans
-		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
-		marks.forEach(mark => mark.remove())
+		if (element.isConnected) {
+			// Remove all mark spans
+			const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
+			marks.forEach(mark => mark.remove())
+		}
 
 		// Only clear refs for the type of element being ejected.
 		// Ejecting inline marks (e.g. cursor leaving <strong>) must NOT wipe block state.

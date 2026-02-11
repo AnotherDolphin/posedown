@@ -85,6 +85,7 @@ export const markdownToHtml = (md: string): string => {
 export const htmlToMarkdown = (html: string): string => {
 	const cleanHtml = DOMPurify.sanitize(html)
 	const hast = fromHtml(cleanHtml, { fragment: true })
+	removeTrailingBr(hast)
 	const mdast = toMdast(hast)
 	return stringifyMdastToMarkdown(mdast)
 }
@@ -97,6 +98,21 @@ export const markdownToDomFragment = (
 	const hast = markdownToHast(markdown)
 	const { fragment, isInline } = unfoldAsFragment(hast)
 	return { fragment, isInline }
+}
+
+function removeTrailingBr(node: HastNodes) {
+	if (!('children' in node)) return
+	for (const child of node.children) {
+		removeTrailingBr(child as HastNodes)
+	}
+	while (node.children.length > 0) {
+		const last = node.children[node.children.length - 1]
+		if (last.type === 'element' && 'tagName' in last && last.tagName === 'br') {
+			node.children.pop()
+		} else {
+			break
+		}
+	}
 }
 
 function removeEmptySeparators(hast: HastNodes) {

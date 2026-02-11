@@ -753,4 +753,110 @@ test.describe('Rich Editor - Block Transformation (unwrapBlock)', () => {
 			await expect(h2).toContainText('Special: & < >')
 		})
 	})
+
+	test.describe('Undo/Redo with Focus Marks', () => {
+		test('should not duplicate focus mark spans when undoing and typing new content', async ({
+			page
+		}) => {
+			const editor = page.locator('[role="article"][contenteditable="true"]')
+
+			// 1. Type "# header"
+			await editor.pressSequentially('# header')
+			await page.waitForTimeout(100)
+
+			const h1 = editor.locator('h1')
+			await expect(h1).toBeVisible()
+			await expect(h1).toContainText('header')
+
+			// 2. Click to show focus marks
+			await h1.click()
+			await page.waitForTimeout(50)
+
+			// 3. Undo back to "# " (should undo "header" text)
+			await page.keyboard.press('Control+z')
+			await page.waitForTimeout(100)
+
+			// 4. Type a letter
+			await page.keyboard.type('a')
+			await page.waitForTimeout(100)
+
+			// 5. Check that there's exactly one focus mark span (not duplicated)
+			const h1After = editor.locator('h1')
+			await expect(h1After).toBeVisible()
+
+			const focusMarkSpans = h1After.locator('.pd-focus-mark')
+
+			// This should fail if there are duplicate spans (bug exists)
+			await expect(focusMarkSpans).toHaveCount(1)
+
+			// Check text content (excluding focus mark span)
+			const textContent = await h1After.evaluate(el => {
+				const clone = el.cloneNode(true) as HTMLElement
+				clone.querySelectorAll('.pd-focus-mark').forEach(mark => mark.remove())
+				return clone.textContent || ''
+			})
+
+			// Should be just "a", not "# a" or empty
+			expect(textContent).toBe('a')
+
+			// Verify the single span has the correct delimiter
+			await expect(focusMarkSpans.first()).toContainText('# ')
+		})
+
+		test('should upgrade H1 to H2 after undo when typing # at delimiter position', async ({
+			page
+		}) => {
+			const editor = page.locator('[role="article"][contenteditable="true"]')
+
+			// 1. Type "# a"
+			await editor.pressSequentially('# a')
+			await page.waitForTimeout(100)
+
+			const h1 = editor.locator('h1')
+			await expect(h1).toBeVisible()
+			await expect(h1).toContainText('a')
+
+			// 2. Click to show focus marks
+			await h1.click()
+			await page.waitForTimeout(50)
+
+			// 3. Undo the "a" — back to "# " (empty heading)
+			await page.keyboard.press('Control+z')
+			await page.waitForTimeout(100)
+
+			// 4. Move cursor to after the "#" (before the space): "#| "
+			await h1.evaluate(el => {
+				const sel = window.getSelection()!
+				const range = document.createRange()
+				range.setStart(el, 0)
+				range.collapse(true)
+				sel.removeAllRanges()
+				sel.addRange(range)
+			})
+			await page.keyboard.press('ArrowRight') // after "#"
+			await page.waitForTimeout(50)
+
+			// 5. Type "#" to make "## "
+			await page.keyboard.type('#')
+			await page.waitForTimeout(100)
+
+			// 6. Verify it's now an H2
+			await expect(h1).not.toBeVisible()
+			const h2 = editor.locator('h2')
+			await expect(h2).toBeVisible()
+
+			// 7. Verify H2 is empty (no leftover content)
+			const textContent = await h2.evaluate(el => {
+				const clone = el.cloneNode(true) as HTMLElement
+				clone.querySelectorAll('.pd-focus-mark').forEach(mark => mark.remove())
+				return clone.textContent || ''
+			})
+			expect(textContent).toBe('')
+
+			// 8. Verify exactly one focus mark span with correct delimiter
+			const focusMarkSpans = h2.locator('.pd-focus-mark')
+			await expect(focusMarkSpans).toHaveCount(1)
+			await expect(focusMarkSpans.first()).toContainText('## ')
+		})
+	})
 })
