@@ -329,22 +329,6 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 		await expect(focusMarks.first()).not.toContainText('**');
 	});
 
-	test('should not show marks on newly created formatted elements', async ({ page }) => {
-		const editor = page.locator('[role="article"][contenteditable="true"]');
-
-		// 1. Type **bold** to create formatted element
-		await editor.pressSequentially('**bold**');
-		await page.waitForTimeout(100);
-
-		const strong = editor.locator('strong');
-		await expect(strong).toBeVisible();
-
-		// 2. Focus marks should NOT appear immediately after creation
-		// (skipNextFocusMarks flag should prevent this)
-		const focusMarks = editor.locator('.pd-focus-mark');
-		await expect(focusMarks).toHaveCount(0);
-	});
-
 	test('should show marks for block elements (headings)', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 

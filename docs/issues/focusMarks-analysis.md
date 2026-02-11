@@ -1,7 +1,8 @@
 # FocusMarks Feature Analysis
 
-**Date:** 2026-01-26
+**Date:** 2026-02-04 (Updated)
 **Author:** Claude (automated analysis)
+**Last Update:** Issue #71 architectural analysis and resolution confirmation
 
 ## Overall Status: ✅ Production-Ready (Core)
 
@@ -38,14 +39,31 @@ The core functionality is complete and working. 58/94 tests passing (61.7%). The
 
 ### ✅ Recently Fixed (since 2026-01-24)
 
-| Issue | Description |
-|-------|-------------|
-| **#71** | Mirroring end span to start span displaced caret |
-| **#71.1** | Adding delimiter at end mirrors/transforms but moved caret incorrectly |
-| **#72** | Typing between delimiters: odd behavior, caret moves to end |
-| **#73** | Typing inside end span wasn't triggered as focus span edit |
-| **#74** | Emptying focused element then typing doubled delimiters |
-| **#75** | Typing between delimiters unpredictable, focus marks hidden incorrectly |
+| Issue | Description | Fix Details |
+|-------|-------------|-------------|
+| **#71** | Mirroring end span to start span displaced caret | Architectural refactor: `skipCaretCorrection` now inferred from DOM connectivity instead of selection state |
+| **#71.1** | Adding delimiter at end mirrors/transforms but moved caret incorrectly | Fixed by symmetric caret positioning in both `before` and `after` cases |
+| **#71.2** | Backspacing from inside closing span caret positioning | Addressed by improved `skipCaretCorrection` inference |
+| **#72** | Typing between delimiters: odd behavior, caret moves to end | Fixed with explicit `setCaretAt` calls |
+| **#73** | Typing inside end span wasn't triggered as focus span edit | Edge detection improved |
+| **#74** | Emptying focused element then typing doubled delimiters | Handled by mirroring logic |
+| **#75** | Typing between delimiters unpredictable, focus marks hidden incorrectly | Resolved through edge handling refactor |
+
+### 🔧 Architectural Improvements (Issue #71 Resolution)
+
+**Problem:** The original caret positioning logic was fragile and relied on selection state:
+- Used `setCaretAtEnd` as a hack to influence `skipCorrection` calculation via `isAtEdge(selection)`
+- `before` case had no caret positioning (asymmetric with `after` case)
+- Selection state could become stale after DOM modifications
+
+**Solution:** Complete refactor of caret positioning strategy:
+1. **Symmetric positioning** - Both `before` and `after` cases explicitly call `setCaretAt/setCaretAtEnd`
+2. **DOM-based inference** - `skipCaretCorrection` inferred from `activeInline.isConnected` instead of selection state
+3. **Trust smartReplaceChildren** - After unwrap/reparse, rely on `smartReplaceChildren` to maintain caret position
+
+**Result:** More robust, predictable caret behavior across all edge delimiter scenarios.
+
+---
 
 ### 🟡 Partially Working
 
@@ -114,18 +132,21 @@ These are **not bugs** - they're architectural constraints:
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `src/lib/core/utils/focus-mark-manager.ts` | Core logic (661 lines) |
-| `src/lib/svelte/richEditorState.svelte.ts` | Integration layer |
-| `src/lib/core/dom/smartReplaceChildren.ts` | DOM reconciliation |
-| `tests/e2e/focus-marks/` | Test suites (9 files) |
+| File | Purpose | Notes |
+|------|---------|-------|
+| `src/lib/core/utils/focus-mark-manager.ts` | Core logic (793 lines) | Refactored for #71 - improved caret positioning |
+| `src/lib/core/focus/utils.ts` | Helper utilities | Extracted from manager for modularity |
+| `src/lib/svelte/richEditorState.svelte.ts` | Integration layer | Calls `handleInFocused`, `handleInlineSpanEdges` |
+| `src/lib/core/dom/smartReplaceChildren.ts` | DOM reconciliation | Preserves caret during rewrites |
+| `tests/e2e/focus-marks/` | Test suites (9 files) | Including #71 caret displacement tests |
 
 ---
 
 ## Conclusion
 
 The feature is **production-ready for normal use**. The remaining 36 failing tests are mostly edge cases that users rarely encounter. The high-priority bugs (#9, #8, #343) should be addressed for a polished experience, but they don't block core functionality.
+
+**Recent Progress:** Issue #71 (caret positioning fragility) has been resolved through an architectural refactor that eliminates reliance on fragile selection state. The new DOM-based inference approach (`activeInline.isConnected`) is more robust and predictable. This represents a significant improvement in code quality and maintainability.
 
 ---
 
