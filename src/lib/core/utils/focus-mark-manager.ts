@@ -22,6 +22,7 @@ import {
 	wouldFormValidBlockDelimiter,
 	BLOCK_FOCUS_MARK_CLASS
 } from '../focus/utils'
+import { isBlockTagName } from './block-marks'
 
 /**
  * Manages focus marks - dynamic delimiter injection for markdown formatting.
@@ -37,8 +38,8 @@ export class FocusMarkManager {
 	activeBlock: HTMLElement | null = null
 	activeInlineDelimiter: string | null = null
 	activeBlockDelimiter: string | null = null
-	inlineSpanRefs: Array<HTMLElement> = []
-	blockSpanRefs: Array<HTMLElement> = []
+	inlineSpanRefs: Array<HTMLElement | Element> = []
+	blockSpanRefs: Array<HTMLElement | Element> = []
 	skipNextFocusMarks = false
 	private editableRef: HTMLElement | null = null // should this be even here
 
@@ -207,8 +208,13 @@ export class FocusMarkManager {
 	 * Example: <strong>text</strong> → <strong><span>**</span>text<span>**</span></strong>
 	 */
 	private injectInlineMarks(element: HTMLElement, skipCaretCorrection = false): void {
-		// Skip if already marked (refs should already be valid from smartReplaceChildren2 move)
-		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
+		// if correct spans exist update refs instead of injecting new spans (handles undo/redo case)
+		const existingSpans = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
+		if (existingSpans.length > 0) {
+			this.inlineSpanRefs = [...existingSpans]
+			this.activeInlineDelimiter = existingSpans[0]?.textContent || ''
+			return
+		}
 
 		// Extract delimiters by reverse-engineering from markdown
 		const delimiters = extractInlineMarks(element)
@@ -243,10 +249,15 @@ export class FocusMarkManager {
 	 * Example: <h1>text</h1> → <h1><span># </span>text</h1>
 	 */
 	private injectBlockMarks(element: HTMLElement): void {
-		// Skip if already marked
-		if (element.querySelector(`.${FOCUS_MARK_CLASS}`)) return
+		// if correct spans exist update refs instead of injecting new spans (handles undo/redo case)
+		const existingSpans = element.querySelectorAll(`.${BLOCK_FOCUS_MARK_CLASS}`)
+		if (existingSpans.length > 0) {
+			this.blockSpanRefs = [...existingSpans]
+			this.activeBlockDelimiter = existingSpans[0].textContent || ''
+			return
+		}
 
-		// Extract delimiter prefix
+		// Extract prefix delimiter
 		const delimiters = extractBlockMarks(element)
 		if (!delimiters) return
 
@@ -265,12 +276,11 @@ export class FocusMarkManager {
 	 * Remove all focus mark spans from an element and normalize text nodes.
 	 */
 	private ejectMarks(element: HTMLElement): void {
-		// Early exit if element was removed from DOM
-		if (!element.isConnected) return
-
-		// Remove all mark spans
-		const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
-		marks.forEach(mark => mark.remove())
+		if (element.isConnected) {
+			// Remove all mark spans
+			const marks = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
+			marks.forEach(mark => mark.remove())
+		}
 
 		// Only clear refs for the type of element being ejected.
 		// Ejecting inline marks (e.g. cursor leaving <strong>) must NOT wipe block state.
@@ -364,12 +374,13 @@ export class FocusMarkManager {
 		// keep focus marks and reparse as is to get new block dom tag from md
 		const fragment = reparse(blockElement, true) as DocumentFragment // now has new and correct outer tag in firstChild, but no focus marks
 		const newBlock =
-			fragment.firstElementChild ||
-			(function () {
-				const p = document.createElement('p')
-				p.append(...(fragment.childNodes || document.createElement('br')))
-				return p
-			})()
+			fragment.firstElementChild && isBlockTagName(fragment.firstElementChild.tagName)
+				? fragment.firstElementChild
+				: (function () {
+						const p = document.createElement('p')
+						p.append(...(fragment.childNodes || document.createElement('br')))
+						return p
+					})()
 
 		// find cursor offset
 		const caretOffset = calculateCursorOffset(blockElement, selection)
@@ -745,11 +756,16 @@ export class FocusMarkManager {
 
 		if (!spanChanged) return false
 
-		// If the new delimiter is invalid (e.g. "## " → "##"), flatten the span
 		if (!isSupportedBlockDelimiter(newDelimiter)) {
+			// flatten, no need to run unwrapAndReparse
 			const offset = calculateCursorOffset(this.activeBlock, selection)
 			prefixSpan.replaceWith(document.createTextNode(newDelimiter))
-			setCaretAt(this.activeBlock, offset)
+			const p = document.createElement('p')
+			while (this.activeBlock.firstChild) p.appendChild(this.activeBlock.firstChild)
+			this.activeBlock.replaceWith(p)
+			setCaretAt(p, offset)
+			this.onRefocus(selection, this.editableRef!)
+			return true
 		}
 
 		this.unwrapAndReparseBlock(selection)
