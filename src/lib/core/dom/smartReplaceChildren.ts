@@ -1,6 +1,5 @@
 import { FOCUS_MARK_CLASS } from '../focus/utils'
-import { setCaretAtEnd } from '../utils/selection'
-import { getDomRangeFromContentOffsets } from './util'
+import { setCaretAtEnd, setCaretAt } from '../utils/selection'
 
 /**
  * Reconcile and replace a parent's child nodes from a new fragment while
@@ -56,24 +55,32 @@ export const smartReplaceChildren = (
 
 	// Calculate removed delimiter offset if pattern matched
 	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
-    
 		if (offsetToCaret >= patternMatch.end) {
 			// Cursor AFTER pattern → subtract both opening & closing delimiters
 			delimiterOffsetDiff = patternMatch.delimiterLength * 2
 		} else if (offsetToCaret >= patternMatch.end - patternMatch.delimiterLength) {
 			// cursor INSIDE end delimiter (e.g. *|*)
-      // todo
       delimiterOffsetDiff = patternMatch.delimiterLength + (patternMatch.end - offsetToCaret)
 		} else if (offsetToCaret >= patternMatch.start + patternMatch.delimiterLength) {
 			// Cursor INSIDE pattern (after opening delimiter, before closing) → subtract opening only
 			delimiterOffsetDiff = patternMatch.delimiterLength
 		} else if (offsetToCaret >= patternMatch.start) {
       // cursor INSIDE open delimiter
-      // todo
       delimiterOffsetDiff = (offsetToCaret - patternMatch.start)
 		}
 		// If cursor is BEFORE pattern start → no adjustment needed
 		offsetToCaret -= delimiterOffsetDiff
+	}
+
+	// Try to place caret at offsetToCaret within node, or subtract node's length and continue
+	const tryRestoreCaret = (node: Node): boolean => {
+		const nodeLength = node.textContent?.length || 0
+		if (offsetToCaret >= 0 && offsetToCaret <= nodeLength) {
+			setCaretAt(node, offsetToCaret)
+			return true
+		}
+		offsetToCaret -= nodeLength
+		return false
 	}
 
 	const maxLength = Math.max(oldNodes.length, newNodes.length)
@@ -81,6 +88,11 @@ export const smartReplaceChildren = (
 	for (let i = 0; i < maxLength; i++) {
 		const oldNode = oldNodes[i]
 		const newNode = newNodes[i]
+
+		// Detect caret in old node before any mutation
+		const caretInOldNode = !caretFound && anchorNode &&
+			oldNode && (oldNode === anchorNode || oldNode.contains(anchorNode))
+		if (caretInOldNode) caretFound = true
 
 		// Case A: End of new list (New content is shorter) -> Remove old remaining
 		if (!newNode) {
@@ -92,21 +104,9 @@ export const smartReplaceChildren = (
 		if (!oldNode) {
 			parent.appendChild(newNode)
 
-			// Check if cursor should be in this node
 			if (caretFound && !caretRestored) {
-				const nodeLength = newNode.textContent?.length || 0
-				if (offsetToCaret <= nodeLength) {
-					// Place cursor at specific offset
-					const range = getDomRangeFromContentOffsets(newNode, offsetToCaret)
-					selection.removeAllRanges()
-					selection.addRange(range)
-					caretRestored = true
-				} else {
-					// Cursor is beyond this node
-					offsetToCaret -= nodeLength
-				}
+				caretRestored = tryRestoreCaret(newNode)
 			} else if (!caretRestored && i === newNodes.length - 1) {
-				// Last node fallback
 				setCaretAtEnd(newNode, selection)
 				caretRestored = true
 			}
@@ -115,27 +115,26 @@ export const smartReplaceChildren = (
 
 		// Case C: Nodes are Identical -> Do Nothing (Preserve Ref & Cursor)
 		if (oldNode.isEqualNode(newNode)) {
-			// Check if cursor was here. If so, it's already safe because we didn't touch the node!
-			if (anchorNode && (oldNode === anchorNode || oldNode.contains(anchorNode))) {
-				caretRestored = true
+			if (caretInOldNode) {
+				caretRestored = true // caret in untouched node — already safe
+			} else if (caretFound && !caretRestored) {
+				// issue#77: remaining offset from a replaced node may fall within
+				// a subsequent identical node due to old/new array index misalignment
+				caretRestored = tryRestoreCaret(oldNode)
+			} else {
+				offsetToCaret -= oldNode.textContent?.length || 0
 			}
-			offsetToCaret -= oldNode.textContent?.length || 0
 			continue
 		}
 
 		// Case D: Nodes are Different -> Replace
-		// 1. Check if cursor was inside the old node before we destroy it
-		const hadCursor = anchorNode && (oldNode === anchorNode || oldNode.contains(anchorNode))
 
-		// 2. If cursor was here, start tracking it
-		if (hadCursor) caretFound = true
-
-		// Preserve focus marks if transforming to restore cursor position
+		// Preserve focus mark spans from old node onto the new replacement
 		const hasFocusSpans = [oldNode.firstChild, oldNode.lastChild].every(
 			n => n?.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className === FOCUS_MARK_CLASS
 		)
 
-		if (hadCursor && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
+		if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
 			const openingSpan = oldNode.firstChild as HTMLElement
 			const closingSpan = oldNode.lastChild as HTMLElement
 
@@ -146,24 +145,10 @@ export const smartReplaceChildren = (
 			offsetToCaret += delimiterOffsetDiff
 		}
 
-		// 3. Swap
 		parent.replaceChild(newNode, oldNode)
 
-		// 4. Restore caret
 		if (caretFound && !caretRestored) {
-			const nodeLength = newNode.textContent?.length || 0
-			if (offsetToCaret <= nodeLength) {
-				// Cursor should be in THIS node at specific offset
-				// Use getRangeFromBlockOffsets to find the correct text node
-				// (newNode may have nested elements, cursor isn't always in first text node)
-				const range = getDomRangeFromContentOffsets(newNode, offsetToCaret)
-				selection.removeAllRanges()
-				selection.addRange(range)
-				caretRestored = true
-			} else {
-				// Cursor is beyond this node - continue tracking
-				offsetToCaret -= nodeLength
-			}
+			caretRestored = tryRestoreCaret(newNode)
 		}
 	}
 

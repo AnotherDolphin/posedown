@@ -59,7 +59,10 @@
 - issue#76: fix caret offset when typing after open span istead of `setCaretAtEnd` ✅
   > used new `setCaretAt` with offset
 
-- issue#77: consecutive formatted elements causes caret them to jump to one of them on new similar pattern before thenm
+- issue#77: consecutive similar formatted elements causes caret them to jump to one of them on new similar pattern before them ✅
+  > fixed and refactored smartReplace; isEqual handling
+
+- issue#78: typing between inline delimiters `*|*word**` causes random behavior on reparse
 
 #### Blocks
 
@@ -86,7 +89,7 @@
 11. block mark edits non responsive after a new inline pattern ✅
 12. deleting block focus spans to be invalid dones't properly flatten h into p ✅
   > handled invalid spans without unwrapAndReparseBlock to prevent leftover preceding space collapse due to md pipeleine
-13. undo/redo destroy blockSpanRefs and injectBlockMarks fails to restore/reassign them due to early return
+13. undo/redo destroy blockSpanRefs and injectBlockMarks fails to restore/reassign them due to early return ✅ (in prev commit)
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅
