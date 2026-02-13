@@ -502,6 +502,16 @@ export class FocusMarkManager {
 
 		// 1. Check span status and handle mirroring
 		const { spansMirrored, spansDisconnected, invalidChanges } = this.checkAndMirrorSpans()
+		if (invalidChanges) {
+			// flatten spans for correct smartReplace
+			this.inlineSpanRefs.forEach(s => {
+				const offset = s.contains(selection.anchorNode) ? calculateCursorOffset(s, selection) : null
+				const textNode = document.createTextNode(s.textContent || '')
+				s.replaceWith(textNode)
+				if (offset) setCaretAt(textNode, offset)
+				})
+		}
+		
 		// 2. If spans modified/disconnected, unwrap and reparse
 		if (spansMirrored || spansDisconnected || invalidChanges) {
 			this.unwrapAndReparseInline(selection)

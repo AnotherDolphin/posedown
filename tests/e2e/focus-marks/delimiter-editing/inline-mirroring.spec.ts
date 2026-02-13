@@ -1063,3 +1063,367 @@ test.describe('#71 Focus Mark Editing - Caret Displacement Logic', () => {
 		}
 	})
 })
+
+test.describe('Typing inside delimiter spans (invalid delimiter splits)', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto(EDITOR_URL)
+		await page.waitForLoadState('networkidle')
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+		await editor.click()
+		await page.keyboard.press('Control+a')
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(50)
+	})
+
+	// Typing a letter inside the opening ** delimiter of bold:
+	// **bold** → focus marks shown → position between * and * → type 'i'
+	// Span becomes *i* (invalid delimiter) → invalidChanges → unwrapAndReparseInline
+	// Expected: bold destroyed, *i*bold** reparsed → <em>i</em>bold**
+	// BUG: focus mark span with *i* stays visible until unfocus
+	test('typing letter inside opening ** span should unwrap bold and not show invalid span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Capture browser console logs
+		const browserLogs: string[] = []
+		page.on('console', msg => {
+			if (msg.text().includes('[DBG')) browserLogs.push(msg.text())
+		})
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.first()).toContainText('**')
+
+		// 3. Navigate into opening delimiter: position between first * and second *
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // after first *
+		await page.waitForTimeout(50)
+
+		// Clear logs before the critical action
+		browserLogs.length = 0
+
+		// 4. Type 'i' → opening span becomes *i* (invalid delimiter)
+		await page.keyboard.type('i')
+		await page.waitForTimeout(200)
+
+		// Print all DBG logs
+		console.log('[T1] === BROWSER DEBUG LOGS ===')
+		for (const log of browserLogs) console.log('[T1]', log)
+		console.log('[T1] === END BROWSER LOGS ===')
+
+		// DEBUG: capture actual DOM state
+		const html = await editor.innerHTML()
+		const text = await editor.locator('p').textContent()
+		const remainingMarks = await editor.locator('.pd-focus-mark').allTextContents()
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel?.anchorNode) return null
+			return {
+				text: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parent: sel.anchorNode.parentElement?.tagName,
+				parentClass: sel.anchorNode.parentElement?.className
+			}
+		})
+		console.log('[T1] innerHTML:', html)
+		console.log('[T1] textContent:', text)
+		console.log('[T1] remaining focus marks:', remainingMarks)
+		console.log('[T1] caret:', JSON.stringify(caretInfo))
+
+		// 5. Bold should be gone (unwrapped)
+		await expect(strong).not.toBeVisible()
+
+		// 6. Should have created italic from *i* reparse
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+		await expect(em).toContainText('i')
+
+		// 7. The remaining "bold**" should be plain text
+		expect(text).toContain('bold**')
+
+		// 8. CRITICAL: no focus mark span should contain invalid delimiter text like "*i*"
+		// After unwrap, old spans should be cleaned up
+		for (const markText of remainingMarks) {
+			expect(markText).not.toBe('*i*')
+		}
+	})
+
+	// Typing * inside the opening ** delimiter of bold:
+	// **bold** → focus marks shown → position between * and * → type '*'
+	// This is INSIDE the span (not at an edge). The span should become *** (invalid).
+	// *** is not in SUPPORTED_INLINE_DELIMITERS → invalidChanges → unwrapAndReparseInline
+	// Expected: bold destroyed, ***bold** as raw text (no valid pattern matches)
+	// BUG: edge handler incorrectly intercepts this as an edge case
+	test('typing * inside opening ** span should make *** (invalid) and unwrap bold', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Capture browser console logs
+		const browserLogs: string[] = []
+		page.on('console', msg => {
+			if (msg.text().includes('[DBG')) browserLogs.push(msg.text())
+		})
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+		await expect(focusMarks.first()).toContainText('**')
+
+		// 3. Navigate into opening delimiter: position between first * and second *
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // after first *
+		await page.waitForTimeout(50)
+
+		// Verify cursor position before typing
+		const preCaretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel?.anchorNode) return null
+			return {
+				text: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parent: sel.anchorNode.parentElement?.tagName,
+				parentClass: sel.anchorNode.parentElement?.className,
+				nodeType: sel.anchorNode.nodeType
+			}
+		})
+		console.log('[T2] caret BEFORE typing *:', JSON.stringify(preCaretInfo))
+
+		// Clear logs before the critical action
+		browserLogs.length = 0
+
+		// 4. Type '*' → span should become *** (invalid, not a supported delimiter)
+		// This is INSIDE the span, NOT at an edge — should not be intercepted by edge handler
+		await page.keyboard.type('*')
+		await page.waitForTimeout(200)
+
+		// Print all DBG logs from the critical action
+		console.log('[T2] === BROWSER DEBUG LOGS ===')
+		for (const log of browserLogs) console.log('[T2]', log)
+		console.log('[T2] === END BROWSER LOGS ===')
+
+		// DEBUG: capture actual DOM state
+		const html = await editor.innerHTML()
+		const text = await editor.locator('p').textContent()
+		const remainingMarks = await editor.locator('.pd-focus-mark').allTextContents()
+		const strongStillVisible = await strong.isVisible().catch(() => false)
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel?.anchorNode) return null
+			return {
+				text: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parent: sel.anchorNode.parentElement?.tagName,
+				parentClass: sel.anchorNode.parentElement?.className
+			}
+		})
+		console.log('[T2] innerHTML:', html)
+		console.log('[T2] textContent:', text)
+		console.log('[T2] remaining focus marks:', remainingMarks)
+		console.log('[T2] strong still visible:', strongStillVisible)
+		console.log('[T2] caret:', JSON.stringify(caretInfo))
+
+		// 5. Bold MUST be gone — *** is not a valid delimiter, element should unwrap
+		await expect(strong).not.toBeVisible()
+
+		// 6. Raw text should contain ***bold** (no mirroring since *** is invalid)
+		expect(text).toContain('***bold**')
+	})
+
+	// Typing a letter inside the closing ** delimiter of bold:
+	// **bold** → focus marks shown → position between the two *s of closing span → type 'x'
+	// Closing span becomes *x* (invalid) → invalidChanges → unwrapAndReparseInline
+	// Expected: bold destroyed, **bold*x* reparsed
+	test('typing letter inside closing ** span should unwrap bold and reparse', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// 3. Navigate into closing delimiter: End puts us after last *, Left once between *s
+		await page.keyboard.press('End')
+		await page.keyboard.press('ArrowLeft') // between the two *s of closing **
+		await page.waitForTimeout(50)
+
+		// 4. Type 'x' → closing span becomes *x* (invalid)
+		await page.keyboard.type('x')
+		await page.waitForTimeout(200)
+
+		// DEBUG: capture actual DOM state
+		const html = await editor.innerHTML()
+		const text = await editor.locator('p').textContent()
+		const remainingMarks = await editor.locator('.pd-focus-mark').allTextContents()
+		const caretInfo = await page.evaluate(() => {
+			const sel = window.getSelection()
+			if (!sel?.anchorNode) return null
+			return {
+				text: sel.anchorNode.textContent,
+				offset: sel.anchorOffset,
+				parent: sel.anchorNode.parentElement?.tagName,
+				parentClass: sel.anchorNode.parentElement?.className
+			}
+		})
+		console.log('[T3] innerHTML:', html)
+		console.log('[T3] textContent:', text)
+		console.log('[T3] remaining focus marks:', remainingMarks)
+		console.log('[T3] caret:', JSON.stringify(caretInfo))
+
+		// 5. Bold should be gone (unwrapped)
+		await expect(strong).not.toBeVisible()
+
+		// 6. Result should contain the reparsed text
+		expect(text).toContain('bold')
+		expect(text).toContain('x')
+
+		// 7. No focus mark should contain invalid delimiter "*x*"
+		for (const markText of remainingMarks) {
+			expect(markText).not.toBe('*x*')
+		}
+	})
+
+	// Strikethrough uses single ~ delimiter (normalized from ~~).
+	// Single-char delimiter has no "between" position — ArrowRight moves past
+	// the span into content. Typing inserts into content, not into the span.
+	// This is correct behavior: can't split a single-char delimiter.
+	test('typing letter after single ~ opening span inserts into content (strikethrough preserved)', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create strikethrough text
+		await editor.pressSequentially('~~strike~~')
+		await page.waitForTimeout(100)
+
+		const del = editor.locator('del, s')
+		await expect(del).toBeVisible()
+
+		// 2. Click to show focus marks
+		await del.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks.first()).toBeVisible()
+
+		// Verify delimiter is single ~ (normalized from ~~)
+		const delimText = await focusMarks.first().textContent()
+		console.log('[T4] delimiter text:', JSON.stringify(delimText))
+		expect(delimText).toBe('~')
+
+		// 3. Navigate: Home → ArrowRight moves past the single ~ span into content
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForTimeout(50)
+
+		// 4. Type 'a' → goes into element content (not into the span, can't split single char)
+		await page.keyboard.type('a')
+		await page.waitForTimeout(200)
+
+		// DEBUG
+		const html = await editor.innerHTML()
+		const text = await editor.locator('p').textContent()
+		console.log('[T4] innerHTML:', html)
+		console.log('[T4] textContent:', text)
+
+		// 5. Strikethrough should still be visible (content edit, not delimiter edit)
+		await expect(del).toBeVisible()
+
+		// 6. Content should include the typed char prepended to original text
+		expect(text).toContain('astrike')
+
+		// 7. Focus mark spans should still be ~ (unchanged)
+		const markTexts = await focusMarks.allTextContents()
+		for (const mt of markTexts) {
+			expect(mt).toBe('~')
+		}
+	})
+
+	// Typing inside ** delimiter of bold created via __ syntax
+	// __text__ normalizes to ** in focus marks. Same split behavior as test 1.
+	// BUG: same as T1 — invalid span stays visible
+	test('typing letter inside opening ** span (from __) should unwrap bold and not show invalid span', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text with underscore syntax
+		await editor.pressSequentially('__text__')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		const focusMarks = editor.locator('.pd-focus-mark')
+		await expect(focusMarks).toHaveCount(2)
+
+		// Delimiter should be ** (normalized from __)
+		const delimText = await focusMarks.first().textContent()
+		console.log('[T5] delimiter text:', JSON.stringify(delimText))
+
+		// 3. Navigate into opening delimiter: position between first char and second char
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // after first char of delimiter
+		await page.waitForTimeout(50)
+
+		// 4. Type 'z' → delimiter span becomes invalid → unwrap+reparse
+		await page.keyboard.type('z')
+		await page.waitForTimeout(200)
+
+		// DEBUG
+		const html = await editor.innerHTML()
+		const text = await editor.locator('p').textContent()
+		const remainingMarks = await editor.locator('.pd-focus-mark').allTextContents()
+		console.log('[T5] innerHTML:', html)
+		console.log('[T5] textContent:', text)
+		console.log('[T5] remaining focus marks:', remainingMarks)
+
+		// 5. Bold should be gone (unwrapped)
+		await expect(strong).not.toBeVisible()
+
+		// 6. Text should have been reparsed
+		expect(text).toContain('text')
+
+		// 7. No focus mark should contain the invalid split like "*z*"
+		for (const markText of remainingMarks) {
+			expect(markText).not.toContain('z')
+		}
+	})
+})
