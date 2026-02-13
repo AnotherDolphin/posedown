@@ -404,17 +404,17 @@ export class FocusMarkManager {
 	 *
 	 * @returns Status flags indicating if spans were disconnected or modified
 	 */
-	private checkAndMirrorSpans() {
+	private checkAndMirrorSpans(selection: Selection) {
 		const spans = this.inlineSpanRefs
 		const someDisconnected = spans.some(span => !span.isConnected)
-		const someModified = spans.some(span => span.textContent !== this.activeInlineDelimiter)
-		let [spansDisconnected, spansMirrored] = [false, false]
-
 		if (someDisconnected) {
 			spans.forEach(span => span.remove())
 			this.activeInlineDelimiter = ''
-			spansDisconnected = true
-		} else if (someModified) {
+			return true
+		}
+
+		const someModified = spans.some(span => span.textContent !== this.activeInlineDelimiter)
+		if (someModified) {
 			const editedSpan = spans.find(span => span.textContent !== this.activeInlineDelimiter)
 			const mirrorSpan = spans.find(span => span !== editedSpan)
 			const shouldMirror =
@@ -423,11 +423,20 @@ export class FocusMarkManager {
 			if (shouldMirror) {
 				mirrorSpan.textContent = editedSpan.textContent
 				this.activeInlineDelimiter = editedSpan.textContent || ''
-				spansMirrored = true
+				return true
 			}
+
+			// modified but not mirrored i.e. invalid span changes => flatten
+			spans.forEach(s => {
+				const offset = s.contains(selection.anchorNode) ? calculateCursorOffset(s, selection) : null
+				const textNode = document.createTextNode(s.textContent || '')
+				s.replaceWith(textNode)
+				if (offset) setCaretAt(textNode, offset)
+			})
+			return true
 		}
-		const invalid = someModified && !spansMirrored
-		return { spansDisconnected, spansMirrored, invalidChanges: invalid }
+
+		return false
 	}
 
 	/**
@@ -500,20 +509,8 @@ export class FocusMarkManager {
 	private onInlineMarkChange(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
-		// 1. Check span status and handle mirroring
-		const { spansMirrored, spansDisconnected, invalidChanges } = this.checkAndMirrorSpans()
-		if (invalidChanges) {
-			// flatten spans for correct smartReplace
-			this.inlineSpanRefs.forEach(s => {
-				const offset = s.contains(selection.anchorNode) ? calculateCursorOffset(s, selection) : null
-				const textNode = document.createTextNode(s.textContent || '')
-				s.replaceWith(textNode)
-				if (offset) setCaretAt(textNode, offset)
-				})
-		}
-		
-		// 2. If spans modified/disconnected, unwrap and reparse
-		if (spansMirrored || spansDisconnected || invalidChanges) {
+		// if spans modified/disconnected, unwrap and reparse
+		if (this.checkAndMirrorSpans(selection)) {
 			this.unwrapAndReparseInline(selection)
 			this.onRefocus(selection, this.editableRef!)
 			return true
