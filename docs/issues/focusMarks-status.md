@@ -1,7 +1,7 @@
 # FocusMarks - Current Status
 
-**Last Updated:** 2026-02-09
-**Latest Commit:** Block marks editing + smartReplace refactoring
+**Last Updated:** 2026-02-11
+**Latest Commit:** Block issues #12, #13 fixed (invalid H→P flattening, undo/redo focus mark reassignment)
 
 > **For architecture, design decisions, and how it works**, see [../focusMarks-design.md](../focusMarks-design.md)
 
@@ -26,6 +26,10 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 - ✅ **Inline focus activation control** - Marks don't appear after pattern creation until refocus
 - ✅ setCaretAt now supports element nodes
 - ✅ New test suite for smartReplaceChildren (509 lines)
+
+### 2026-02-09 to 2026-02-11
+- ✅ **Issue #12 FIXED** - Invalid delimiter deletion now correctly flattens heading to `<p>` and refocuses
+- ✅ **Issue #13 FIXED** - Undo/redo no longer destroys focus mark refs; inject methods now reassign from existing spans
 
 ### 2026-02-06 to 2026-02-09
 - ✅ **Issue #9 FIXED** - BR tag removal prevents trailing backslash in updated headers
@@ -92,9 +96,10 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 ## What's Broken / Incomplete
 
 **Block Marks (Improved):**
-- ✅ Headings work fully (issues #9, #10, #11 fixed)
+- ✅ Headings work fully (issues #9–#13 fixed)
 - ✅ Block marks persist during inline transformations
-- ✅ Invalid delimiter flattening works
+- ✅ Invalid delimiter flattening and H→P conversion work
+- ✅ Focus marks survive undo/redo
 - ❌ Blockquotes: Editing `>` shows on separate line
 - ❌ Lists: Editing `-`/`1.` needs UX redesign
 - ❌ Codeblocks: Marks never show
@@ -174,7 +179,6 @@ See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integra
 - Block transforms, inline formatting preservation, activation control
 
 **Open Issues:**
-- #8: Undo/redo "range not found" error
 - #77: Consecutive elements caret jump
 - #343: Null error reading 'childNodes'
 - Block #2-6: querySelectorAll error, mark deletion, blockquote/codeblock/list issues

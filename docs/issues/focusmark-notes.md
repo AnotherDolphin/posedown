@@ -33,7 +33,7 @@
 
 - ~~issue#12: selecting multiple dels and typing doesn't mirror~~ (works actually)
 
-- issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:70](/src/lib/core/transforms/transform.ts#L70)
+- ~~issue#8: (smartReplaceChildren) undo last transform => input pattern again => error range not found [transform.ts:70](/src/lib/core/transforms/transform.ts#L70)~~
 
 - issue#343: Cannot read properties of null (reading 'childNodes') [richEditorState.svelte.ts:246](/src/lib/svelte/richEditorState.svelte.ts#L246)
 
@@ -86,7 +86,7 @@
 11. block mark edits non responsive after a new inline pattern ✅
 12. deleting block focus spans to be invalid dones't properly flatten h into p ✅
   > handled invalid spans without unwrapAndReparseBlock to prevent leftover preceding space collapse due to md pipeleine
-13. undo/redo destroy blockSpanRefs and injectBlockMarks fails to restore/reassign them due to early return
+13. undo/redo destroy blockSpanRefs and injectBlockMarks fails to restore/reassign them due to early return ✅
 
 ### later
 - encapsulate logic by reworking and calling `focus-mark-manager.ts` in main onInput ✅

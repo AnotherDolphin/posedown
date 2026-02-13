@@ -1,6 +1,6 @@
 # FocusMarks - Design Documentation
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-11
 
 > **For current implementation status and test results**, see [focusMarks-status.md](./issues/focusMarks-status.md)
 
@@ -168,6 +168,11 @@ smartReplaceChildren() intelligently handles caret:
 **Span Stripping:** `getSpanlessClone()` removes `.pd-focus-mark` spans before pattern detection
 - Prevents interference with markdown parsing
 
+**Undo/Redo Resilience:** `injectInlineMarks()` and `injectBlockMarks()` handle DOM restoration
+- Old behavior: skip injection if spans already exist in element
+- New behavior: if spans exist, reassign `spanRefs` and `activeDelimiter` from them instead of re-injecting
+- Required because undo/redo restores previous DOM (including spans) but leaves refs stale
+
 **CSS Classes:** Focus mark spans use dual classification
 - All marks: `.pd-focus-mark` (base styling, selection in getSpanlessClone)
 - Block marks only: `.pd-focus-mark-block` (additional class for preservation during inline transforms)
@@ -249,6 +254,10 @@ BLOCK_FORMATTED_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'LI']
 
 **List Items:** `<li>` needs parent context for delimiter (`<ul>` → `-`, `<ol>` → `1.`)
 - Create temporary wrapper with parent list type before markdown conversion
+
+**Trailing BR Stripping:** `htmlToMarkdown()` removes trailing `<br>` tags before AST conversion
+- Chrome inserts trailing `<br>` after new block patterns; without removal this serializes as `\` in markdown
+- `removeTrailingBr()` in `ast-utils.ts` strips them recursively before `toMdast()`
 
 **Performance:**
 - ~0.2-0.4ms per selection change
