@@ -6,7 +6,7 @@ import {
 	calculateCleanCursorOffset,
 	calculateCursorOffset
 } from './dom'
-import { findFirstMarkdownMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
+import { findFirstMarkdownMatch, findFirstMdMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
 import { smartReplaceChildren } from '../dom/smartReplaceChildren'
 import { reparse, buildBlockFragmentWithReplacement, getDomRangeFromContentOffsets } from '../dom'
@@ -352,7 +352,12 @@ export class FocusMarkManager {
 			newElementFrag
 		)
 
-		const hasInlinePattern = findFirstMarkdownMatch(parentBlock.textContent || '')
+		const hasInlinePattern = findFirstMdMatch(parentBlock.textContent || '')
+		const hasInlinePattern2 = findFirstMarkdownMatch(parentBlock.textContent || '')
+		debugger
+		
+
+
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		this.editableRef && this.onRefocus(selection, this.editableRef)
@@ -492,8 +497,8 @@ export class FocusMarkManager {
 		// Find new best pattern
 		this.unwrapAndReparseInline(selection)
 		// Unfocus to skip showing marks (like regular typing)
-		this.skipNextFocusMarks = true
-		this.unfocus()
+		// this.skipNextFocusMarks = true
+		// this.unfocus()
 		// maydo: may redesign to always keep marks shown (unless user types away like obsidian) but move caret to end (for whole system)
 
 		return true

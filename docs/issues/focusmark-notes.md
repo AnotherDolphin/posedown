@@ -65,7 +65,11 @@
 - issue#78: typing between inline delimiters `*|*word**` causes random behavior on reparse ✅
   > flatten spans that become invalid before reparsing
 
-- issue#78.1: (minor issue with unwrapAndReparseInline) there's a mismatch between the transform pipeline and how findFirstMarkdownMatch works becuase the pipleine is commonmark compliant and findFirstMarkdownMatch is greedy (e.g. `*|*bold**` => `**|*bold**` input acts differently in reparse than what findFirstMarkdownMatch recognizes) which affect caret recovery in smartReplace
+- issue#78.1: (minor issue with unwrapAndReparseInline) there's a mismatch between the transform pipeline and how findFirstMarkdownMatch works becuase the pipleine is commonmark compliant and findFirstMarkdownMatch is greedy (e.g. `*|*bold**` => `**|*bold**` input acts differently in reparse than what findFirstMarkdownMatch recognizes) which affect caret recovery in smartReplace ⏳
+
+- issue78.2: dispcrepancy between new findFirstMdMatch and findFirstMarkdownMatch
+
+- issue#79: nested inline transforms move caret to the end of (inline) parent esp. on more than one nested additions
 
 #### Blocks
 

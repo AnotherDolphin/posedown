@@ -4,7 +4,6 @@ import {
 	markdownToDomFragment,
 	htmlToMarkdown,
 } from '$lib/core/transforms/ast-utils'
-import { findFirstMarkdownMatch } from '$lib/core/utils/inline-patterns'
 import { isBlockPattern, isListPattern } from '$lib/core/utils/block-patterns'
 import {
 	preserveOneChild,

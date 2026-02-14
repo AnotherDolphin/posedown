@@ -1,7 +1,7 @@
 import { markdownToDomFragment } from '../transforms/ast-utils'
 import { isBlockTagName } from './block-marks'
 import { FOCUS_MARK_CLASS } from '../focus/utils'
-import { findFirstMarkdownMatch } from './inline-patterns'
+import { findFirstMarkdownMatch, findFirstMdMatch } from './inline-patterns'
 import {
 	handleEnterInListItem,
 	handleBackspaceInListItem,
@@ -423,7 +423,7 @@ export function hasSemanticTags(html: string): boolean {
 	return semanticTags.some(tag => lowerHtml.includes(tag))
 }
 
-/** todo: revisit
+/** todo: revisit (only used for onPaste)
  * Process markdown patterns found in text nodes within a DOM fragment.
  * This handles mixed content like: <strong>**code**</strong> (bold HTML with markdown inside).
  * Recursively processes text nodes to transform embedded markdown syntax.
@@ -443,7 +443,8 @@ export function processMarkdownInTextNodes(node: Node): void {
 	// Process each text node for markdown patterns
 	textNodes.forEach(textNode => {
 		const text = textNode.textContent || ''
-		const match = findFirstMarkdownMatch(text)
+		const match = findFirstMdMatch(text)
+		// const match = findFirstMarkdownMatch(text)
 
 		if (match && textNode.parentNode) {
 			// Found markdown - transform it
