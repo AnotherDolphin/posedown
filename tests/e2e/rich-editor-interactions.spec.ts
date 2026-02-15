@@ -5,10 +5,11 @@ const EDITOR_URL = '/test'
 test.describe('Rich Editor State - All Interactions', () => {
 	test.beforeEach(async ({ page }) => {
 		// Only navigate if not already on the page
-		if (page.url() !== `http://localhost:5173${EDITOR_URL}`) {
-			await page.goto(EDITOR_URL)
-		}
-
+		// if (!page.url().endsWith(EDITOR_URL)) {
+		// 	await page.goto(EDITOR_URL)
+		// }
+		await page.goto(EDITOR_URL)
+		await page.waitForLoadState('networkidle')
 		// Clear the editor
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 		await editor.click()
