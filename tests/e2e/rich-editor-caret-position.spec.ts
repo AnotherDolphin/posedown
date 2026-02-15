@@ -418,4 +418,82 @@ test.describe('Rich Editor - Caret Position After Transformations', () => {
 		const innerHTML = await editor.innerHTML()
 		expect(innerHTML).toContain('<em>italic</em>x')
 	})
+
+	test('caret should land after each nested bold, not after "text", when typing inside italic', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Step 1: type the parent italic
+		await editor.pressSequentially('*italic text*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// Step 2: navigate inside between "italic" and "text"
+		await em.click()
+		await page.waitForTimeout(50)
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowRight') // 1 for *, 7 for "italic "
+
+		// Step 3a: type first bold, then immediately type x — caret must land after first </strong>
+		await editor.pressSequentially('**b**')
+		await page.waitForTimeout(100)
+		await editor.pressSequentially('x')
+
+		let innerHTML = await editor.innerHTML()
+		expect(innerHTML).toMatch(/<em>italic <strong>b<\/strong>x text<\/em>/)
+
+		// Step 3b: delete x, type second bold, then immediately type x — caret must land after second </strong>
+		await page.keyboard.press('Backspace')
+		await editor.pressSequentially(' **b**')
+		await page.waitForTimeout(100)
+
+		await expect(em).toBeVisible()
+		const bolds = em.locator('strong')
+		await expect(bolds).toHaveCount(2)
+
+		await editor.pressSequentially('x')
+
+		innerHTML = await editor.innerHTML()
+		expect(innerHTML).toMatch(/<em>italic <strong>b<\/strong> <strong>b<\/strong>x text<\/em>/)
+	})
+
+	test('caret should land after each nested italic, not after "text", when typing inside bold', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Step 1: type the parent bold
+		await editor.pressSequentially('**bold text**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// Step 2: navigate inside between "bold" and "text"
+		await strong.click()
+		await page.waitForTimeout(50)
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 7; i++) await page.keyboard.press('ArrowRight') // 2 for **, 5 for "bold "
+
+		// Step 3a: type first italic, then immediately type x — caret must land after first </em>
+		await editor.pressSequentially('*i*')
+		await page.waitForTimeout(100)
+		await editor.pressSequentially('x')
+
+		let innerHTML = await editor.innerHTML()
+		expect(innerHTML).toMatch(/<strong>bold <em>i<\/em>x text<\/strong>/)
+
+		// Step 3b: delete x, type second italic, then immediately type x — caret must land after second </em>
+		await page.keyboard.press('Backspace')
+		await editor.pressSequentially(' *i*')
+		await page.waitForTimeout(100)
+
+		await expect(strong).toBeVisible()
+		const italics = strong.locator('em')
+		await expect(italics).toHaveCount(2)
+
+		await editor.pressSequentially('x')
+
+		innerHTML = await editor.innerHTML()
+		expect(innerHTML).toMatch(/<strong>bold <em>i<\/em> <em>i<\/em>x text<\/strong>/)
+	})
 })
