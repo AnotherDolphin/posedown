@@ -1,9 +1,10 @@
 import {
 	setCaretAtEnd,
 	getMainParentBlock,
-	findFirstMarkdownMatch,
+	findFirstMdMatch,
 	isBlockPattern,
-	calculateCleanCursorOffset
+	calculateCleanCursorOffset,
+	findFirstMarkdownMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS } from '../focus/utils'
@@ -47,7 +48,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Check for block patterns, with special handling for list patterns inside LIs
 	const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
-	const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
+	const hasInlinePattern = findFirstMdMatch(cleanBlock.textContent || '')
+	// const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
 	if (!hasBlockPattern && !hasInlinePattern) return null
 
 	const contentInMd = domToMarkdown(cleanBlock)

@@ -3,6 +3,8 @@
  * Avoids repetition by parameterizing delimiter patterns
  */
 
+import { parseMarkdownToMdast } from '../transforms/ast-utils'
+
 /**
  * Escapes special regex characters in a string
  */
@@ -155,6 +157,9 @@ export function extractMatches(
 /**
  * Find the first markdown pattern match in the text
  * Returns position, matched text, and delimiter length for inline replacement
+ *
+ * @deprecated Use {@link findFirstMdMatch} instead — it uses the CommonMark-compliant
+ * mdast parser and matches the precedence rules of the AST pipeline.
  */
 export function findFirstMarkdownMatch(
 	text: string
@@ -174,5 +179,62 @@ export function findFirstMarkdownMatch(
 			}
 		}
 	}
+	return null
+}
+
+type MatchResult = { start: number; end: number; text: string; patternName: string; delimiterLength: number }
+
+/**
+ * CommonMark-compliant version of findFirstMarkdownMatch.
+ * Uses the mdast parser instead of regex, so precedence rules (e.g. ***bold** → *<strong>bold</strong>)
+ * match what htmlToMarkdown / the rest of the AST pipeline produces.
+ * Does not support non-standard patterns: highlight (==), subscript (~), superscript (^), wikiLink.
+ */
+export function findFirstMdMatch(text: string): MatchResult | null {
+	const mdast = parseMarkdownToMdast(text)
+	const paragraph = mdast.children[0]
+	if (!paragraph || paragraph.type !== 'paragraph') return null
+
+	for (const node of paragraph.children) {
+		if (node.type === 'text' || !node.position) continue
+
+		const start = node.position.start.offset!
+		const end = node.position.end.offset!
+
+		let patternName: string
+		let delimiterLength: number
+
+		switch (node.type) {
+			case 'strong':
+				patternName = text[start] === '_' ? 'underline' : 'bold'
+				delimiterLength = 2
+				break
+			case 'emphasis':
+				patternName = text[start] === '_' ? 'italicUnderscore' : 'italic'
+				delimiterLength = 1
+				break
+			case 'inlineCode':
+				patternName = 'code'
+				delimiterLength = 1
+				break
+			case 'delete':
+				delimiterLength = text[start + 1] === '~' ? 2 : 1
+				patternName = 'strikethrough'
+				break
+			case 'link':
+				patternName = 'link'
+				delimiterLength = 1
+				break
+			case 'image':
+				patternName = 'image'
+				delimiterLength = 2
+				break
+			default:
+				continue
+		}
+
+		return { start, end, text: text.slice(start, end), patternName, delimiterLength }
+	}
+
 	return null
 }
