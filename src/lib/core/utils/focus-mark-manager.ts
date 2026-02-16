@@ -6,7 +6,7 @@ import {
 	calculateCleanCursorOffset,
 	calculateCursorOffset
 } from './dom'
-import { findFirstMarkdownMatch, findFirstMdMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
+import { findFirstMdMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
 import { smartReplaceChildren } from '../dom/smartReplaceChildren'
 import { reparse, buildBlockFragmentWithReplacement, getDomRangeFromContentOffsets } from '../dom'
@@ -323,7 +323,7 @@ export class FocusMarkManager {
 
 		// INLINE SECOND - more granular, only if block didn't restructure
 		if (this.activeInline) {
-			return this.onInlineMarkChange(selection)
+			return this.handleFocusedInline(selection)
 		}
 
 		return false
@@ -353,11 +353,7 @@ export class FocusMarkManager {
 		)
 
 		const hasInlinePattern = findFirstMdMatch(parentBlock.textContent || '')
-		const hasInlinePattern2 = findFirstMarkdownMatch(parentBlock.textContent || '')
-		debugger
-		
-
-
+		// const hasInlinePattern2 = findFirstMarkdownMatch(parentBlock.textContent || '')
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		this.editableRef && this.onRefocus(selection, this.editableRef)
@@ -447,6 +443,7 @@ export class FocusMarkManager {
 	/**
 	 * Handle markdown patterns typed inside active formatted elements.
 	 * Detects nested patterns, removes spans, reparses, then reinjects spans.
+	 * Acts a lot like unwrapAndReparseInline but internal/surgical
 	 *
 	 * @param selection Current selection for caret restoration
 	 * @returns true if patterns were handled, false otherwise
@@ -454,22 +451,15 @@ export class FocusMarkManager {
 	private handleNestedPatterns(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
-		const hasInlinePattern = findFirstMarkdownMatch(
-			getSpanlessClone(this.activeInline)?.textContent || ''
-		)
+		// const hasInlinePattern = findFirstMarkdownMatch(getSpanlessClone(this.activeInline).textContent)
+		const hasInlinePattern = findFirstMdMatch(getSpanlessClone(this.activeInline).textContent)
 		if (!hasInlinePattern) return false
 
-		const [startSpan, endSpan] = this.inlineSpanRefs
 		// Remove spans to prevent pattern interference
-		startSpan?.remove()
-		endSpan?.remove()
-		const fragment = reparse(this.activeInline) // No unwrapping here, just removing spans
+		this.inlineSpanRefs.forEach(s => s?.remove())
+		const fragment = reparse(this.activeInline, true) // No unwrapping here, just removing spans
 		smartReplaceChildren(this.activeInline, fragment, selection, hasInlinePattern)
-		// Reinject spans
-		if (startSpan) this.activeInline.prepend(startSpan)
-		if (endSpan) this.activeInline.append(endSpan)
-		// Skip next focusmarks (this triggers onSelectionChange)
-		this.skipNextFocusMarks = true
+		// onSelectionChange corrects state and reinjects spans
 
 		return true
 	}
@@ -489,7 +479,8 @@ export class FocusMarkManager {
 		// e.g. **bold** => **bo**ld**
 		// then match a new pattern where the old closing delimiter is now just text
 		// and the new closing focus mark is at the closest valid activeDelimiter to the first span
-		const matchWhole = findFirstMarkdownMatch(this.activeInline.textContent || '')
+		// const matchWhole = findFirstMarkdownMatch(this.activeInline.textContent || '')
+		const matchWhole = findFirstMdMatch(this.activeInline.textContent || '')
 		const hasBreakingChange = matchWhole && matchWhole.text !== this.activeInline.textContent
 
 		if (!hasBreakingChange) return false
@@ -511,7 +502,7 @@ export class FocusMarkManager {
 	 * @param selection Current selection for caret restoration
 	 * @returns true if inline handling occurred, false otherwise
 	 */
-	private onInlineMarkChange(selection: Selection): boolean {
+	private handleFocusedInline(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// if spans modified/disconnected, unwrap and reparse
@@ -634,7 +625,7 @@ export class FocusMarkManager {
 			setCaretAtEnd(targetSpan, selection)
 		}
 
-		return this.onInlineMarkChange(selection)
+		return this.handleFocusedInline(selection)
 	}
 
 	// ============================ BLOCK HANDLING ===================================

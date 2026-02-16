@@ -250,7 +250,6 @@ export class EditorHistory {
 
 		// Restore selection/cursor if available
 		if (entry.selection) {
-			// debugger
 			const restored = restoreSelection(entry.selection, element)
 			if (!restored) {
 				this.log('Warning: Could not restore selection (DOM structure changed)')

@@ -256,8 +256,20 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 	test('should normalize delimiter syntax (underscore bold becomes asterisk)', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]');
 
-		// 1. Create bold with underscore
-		await editor.pressSequentially('__bold__');
+		// 1. Type up to the intermediate state __bold_ (7 of 8 chars).
+		//    CommonMark correctly matches _bold_ as emphasis here, so a premature <em>
+		//    is expected at this point for both * and _ delimiters.
+		await editor.pressSequentially('__bold_');
+		await page.waitForTimeout(100);
+
+		// CommonMark produces <em> here — this is expected, not a bug
+		await expect(editor.locator('em')).toBeVisible();
+
+		// 2. Type the final _ to complete __bold__.
+		//    With _ delimiters: ast-utils serializes <em> as *bold* (normalizes to *),
+		//    so the DOM round-trips as _*bold*_ — mismatched delimiters that never
+		//    resolve to <strong>. The final state is the real failure point.
+		await editor.pressSequentially('_');
 		await page.waitForTimeout(100);
 
 		const strong = editor.locator('strong');
@@ -269,6 +281,41 @@ test.describe('Rich Editor - Focus Mark Activation', () => {
 
 		// 3. Should normalize to ** (not preserve original __)
 		const focusMarks = editor.locator('.pd-focus-mark');
+		await expect(focusMarks.first()).toContainText('**');
+		await expect(focusMarks.last()).toContainText('**');
+	});
+
+	test('should not prematurely transform **bold** to italic during typing (asterisk analogue of __bold__)', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]');
+
+		// 1. Type up to the intermediate state **bold* (7 of 8 chars).
+		//    CommonMark correctly matches *bold* as emphasis here — same as __bold_,
+		//    a premature <em> is expected at this point.
+		await editor.pressSequentially('**bold*');
+		await page.waitForTimeout(100);
+
+		// CommonMark produces <em> here — this is expected, not a bug
+		await expect(editor.locator('em')).toBeVisible();
+
+		// 2. Type the final * to complete **bold**.
+		//    With * delimiters: ast-utils serializes <em> as *bold* (same delimiter),
+		//    so the DOM round-trips as **bold** — matching delimiters that correctly
+		//    resolve to <strong>. The * case self-heals; the _ case does not.
+		await editor.pressSequentially('*');
+		await page.waitForTimeout(100);
+
+		// 3. The result must be <strong>, not <em>
+		const strong = editor.locator('strong');
+		await expect(strong).toBeVisible();
+		await expect(editor.locator('em')).toHaveCount(0);
+
+		// 3. Click inside bold to show focus marks
+		await strong.click();
+		await page.waitForTimeout(50);
+
+		// 4. Marks must show ** (double asterisk, not single)
+		const focusMarks = editor.locator('.pd-focus-mark');
+		await expect(focusMarks).toHaveCount(2);
 		await expect(focusMarks.first()).toContainText('**');
 		await expect(focusMarks.last()).toContainText('**');
 	});

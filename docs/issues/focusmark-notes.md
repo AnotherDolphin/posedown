@@ -67,9 +67,11 @@
 
 - issue#78.1: (minor issue with unwrapAndReparseInline) there's a mismatch between the transform pipeline and how findFirstMarkdownMatch works becuase the pipleine is commonmark compliant and findFirstMarkdownMatch is greedy (e.g. `*|*bold**` => `**|*bold**` input acts differently in reparse than what findFirstMarkdownMatch recognizes) which affect caret recovery in smartReplace ⏳
 
-- issue78.2: dispcrepancy between new findFirstMdMatch and findFirstMarkdownMatch
+- issue78.2: dispcrepancy between new findFirstMdMatch and findFirstMarkdownMatch ⏳
+  > main issue lies in transform.ts call. The old had a `preventNesting` guard but the new one does natural premature transforms on \*\*bold\* to \**bold*
+  > also, adding a final * trasform to **bold** correctly for asteriks, but fails for underscores because ast-utils can only back-track to asterisks on round conversions
 
-- issue#79: nested inline transforms move caret to the end of (inline) parent esp. on more than one nested additions
+- issue#79: nested inline delmiiter inputs OR new transforms move caret to the end of (inline) parent esp. on more than one nested additions
 
 #### Blocks
 
