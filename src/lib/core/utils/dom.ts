@@ -495,7 +495,7 @@ export function endsWithValidDelimiter(text: string): boolean {
  */
 export function calculateCleanCursorOffset(element: HTMLElement, selection: Selection): number {
 	const anchorNode = selection.anchorNode
-	if (!anchorNode || !element.contains(anchorNode)) return 0
+	if (!anchorNode || !element.contains(anchorNode)) return -1
 
 	let offset = 0
 	const traverse = (node: Node): boolean => {

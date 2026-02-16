@@ -323,7 +323,7 @@ export class FocusMarkManager {
 
 		// INLINE SECOND - more granular, only if block didn't restructure
 		if (this.activeInline) {
-			return this.onInlineMarkChange(selection)
+			return this.handleFocusedInline(selection)
 		}
 
 		return false
@@ -511,7 +511,7 @@ export class FocusMarkManager {
 	 * @param selection Current selection for caret restoration
 	 * @returns true if inline handling occurred, false otherwise
 	 */
-	private onInlineMarkChange(selection: Selection): boolean {
+	private handleFocusedInline(selection: Selection): boolean {
 		if (!this.activeInline) return false
 
 		// if spans modified/disconnected, unwrap and reparse
@@ -634,7 +634,7 @@ export class FocusMarkManager {
 			setCaretAtEnd(targetSpan, selection)
 		}
 
-		return this.onInlineMarkChange(selection)
+		return this.handleFocusedInline(selection)
 	}
 
 	// ============================ BLOCK HANDLING ===================================

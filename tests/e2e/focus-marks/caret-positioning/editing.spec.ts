@@ -101,7 +101,6 @@ test.describe('#71 Focus Mark Editing - Caret Displacement Logic', () => {
 		// Structure: [*]bold[*] - cursor after "bold" before closing span
 		await page.keyboard.press('End')
 		await page.keyboard.press('ArrowLeft') // Before closing span, after "bold"
-		debugger
 		await page.waitForTimeout(50)
 
 		// 4. Type * then X
