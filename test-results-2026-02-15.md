@@ -47,6 +47,46 @@
 
 ---
 
+## After `handleNestedPatterns` fix (commit `d137566`)
+
+**Summary:** 44 passed / 17 failed / 61 total  *(net: no change vs previous, but 2 fixed / 2 regressed)*
+
+### Fixed ✅ (was failing after `newFindFirstMd`, now passing)
+
+| File | Test |
+|------|------|
+| caret-position | caret should handle multiple patterns - cursor at end `:299` |
+| inline-patterns | should convert `~~**deleted bold**~~` to `<del>` wrapping `<strong>` `:409` |
+
+### Regressions introduced ❌ (was passing after `newFindFirstMd`, now failing)
+
+| File | Test |
+|------|------|
+| caret-position | caret should handle pattern followed by space and text `:52` |
+| caret-position | caret should handle typing after pattern with no trailing space `:358` |
+
+### Unchanged failures (still failing, 13 tests)
+
+| File | Test |
+|------|------|
+| caret-position | caret should handle backspace after pattern transformation `:115` |
+| caret-position | caret should handle cursor BEFORE pattern start `:268` |
+| caret-position | caret should handle pattern with punctuation before it `:312` |
+| caret-position | caret should handle typing in middle then navigating away and back `:368` |
+| caret-position | caret should handle underscore bold pattern `:396` |
+| caret-position | caret should land after each nested bold, not after "text", when typing inside italic `:422` |
+| caret-position | caret should land after each nested italic, not after "text", when typing inside bold `:461` |
+| inline-patterns | should handle mixed inline patterns `:128` |
+| inline-patterns | should handle multiple italic elements inside bold `:170` |
+| inline-patterns | should handle multiple bold elements inside italic `:213` |
+| inline-patterns | should convert `**_bold italic_**` to `<strong>` wrapping `<em>` `:375` |
+| inline-patterns | should convert `_**italic bold**_` to `<em>` wrapping `<strong>` `:392` |
+| inline-patterns | should convert `**~~bold deleted~~**` to `<strong>` wrapping `<del>` `:426` |
+| inline-patterns | should handle triple nesting: `***~~text~~***` `:443` |
+| inline-patterns | Position-Dependent Nesting › should handle different nesting combinations at start: `**_text_**` `:618` |
+
+---
+
 ---
 
 ## rich-editor-caret-position.spec.ts
