@@ -6,6 +6,64 @@
 
 ---
 
+## After commit `c6ee77b` (merged at `8bbb1fb`) — issue#80: removed `skipCaretCorrection`, rewrote `onInlineBreakingEdits`
+
+**Summary:** 28 passed / 33 failed / 61 total  *(net vs previous: −16 pass, +16 fail)*
+
+### Fixed ✅ (was failing in `d137566`, now passing)
+
+| File | Test |
+|------|------|
+| caret-position | caret should handle backspace after pattern transformation `:115` |
+| caret-position | caret should handle pattern with punctuation before it `:312` |
+| caret-position | caret should handle pattern followed by space and text `:52` |
+| inline-patterns | should handle mixed inline patterns `:128` |
+
+### Regressions introduced ❌ (was passing in `d137566`, now failing)
+
+| File | Test |
+|------|------|
+| caret-position | caret should be preserved when pattern has text before it `:36` |
+| caret-position | caret should be after nested patterns `:78` |
+| caret-position | caret should handle multiple patterns in sequence `:94` |
+| caret-position | caret should handle pattern at end of line `:196` |
+| caret-position | caret should be correct when adding markdown in the middle of a block `:241` |
+| caret-position | caret should handle multiple patterns - cursor at end `:299` |
+| caret-position | caret should handle long text with pattern in middle `:340` |
+| inline-patterns | should convert `**bold**` markdown to `<strong>` element `:17` |
+| inline-patterns | should convert `*italic*` markdown to `<em>` element `:32` |
+| inline-patterns | should prevent typing inside styled element after conversion `:66` |
+| inline-patterns | should allow multiple characters after styled element `:109` |
+| inline-patterns | should convert `***bold italic***` to nested `<em><strong>` elements `:355` |
+| inline-patterns | should convert `~~**deleted bold**~~` to `<del>` wrapping `<strong>` `:409` |
+| inline-patterns | Position-Dependent Nesting › should handle nested pattern at start of line (single word) `:502` |
+| inline-patterns | Position-Dependent Nesting › should handle nested pattern at end of line `:519` |
+| inline-patterns | Position-Dependent Nesting › should handle nested pattern in middle of line (single word) `:538` |
+| inline-patterns | Position-Dependent Nesting › should handle nested pattern with phrase at start `:560` |
+| inline-patterns | Position-Dependent Nesting › should handle nested pattern with phrase at end `:577` |
+| inline-patterns | Position-Dependent Nesting › should handle different nesting combinations at end: `_**text**_` `:637` |
+| inline-patterns | Position-Dependent Nesting › should handle single character nested pattern `:656` |
+
+### Unchanged failures (still failing, 13 tests)
+
+| File | Test |
+|------|------|
+| caret-position | caret should handle cursor BEFORE pattern start `:268` |
+| caret-position | caret should handle typing after pattern with no trailing space `:358` |
+| caret-position | caret should handle typing in middle then navigating away and back `:368` |
+| caret-position | caret should handle underscore bold pattern `:396` |
+| caret-position | caret should land after each nested bold, not after "text", when typing inside italic `:422` |
+| caret-position | caret should land after each nested italic, not after "text", when typing inside bold `:461` |
+| inline-patterns | should handle multiple italic elements inside bold `:170` |
+| inline-patterns | should handle multiple bold elements inside italic `:213` |
+| inline-patterns | should convert `**_bold italic_**` to `<strong>` wrapping `<em>` `:375` |
+| inline-patterns | should convert `_**italic bold**_` to `<em>` wrapping `<strong>` `:392` |
+| inline-patterns | should convert `**~~bold deleted~~**` to `<strong>` wrapping `<del>` `:426` |
+| inline-patterns | should handle triple nesting: `***~~text~~***` `:443` |
+| inline-patterns | Position-Dependent Nesting › should handle different nesting combinations at start: `**_text_**` `:618` |
+
+---
+
 ## After Merge — `newFindFirstMd` (commit `efb3c7f`)
 
 **Summary:** 44 passed / 17 failed / 61 total  *(net: −2 pass, +2 fail)*

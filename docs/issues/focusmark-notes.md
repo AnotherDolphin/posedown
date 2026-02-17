@@ -76,6 +76,8 @@
 - issue#80: new findFirstMdMatch realtime updates causing comptability issues with `onInlineBreakingEdits` 
  fixed injectInlineMarks preservation logic, removed `skipCaretCorrection`, and made `onInlineBreakingEdits` by also reparsing whole block ✅
 
+- issue#81: mirroring leaves behind stray dels. Adding * to `**em*|` mirrors but leaves (doesn't consume) behind surrounding * (first char in this ex.)
+
 #### Blocks
 
 1. caret restoration ignores delimiter length ✅
