@@ -73,6 +73,9 @@
 
 - issue#79: nested inline delmiiter inputs OR new transforms move caret to the end of (inline) parent esp. on more than one nested additions
 
+- issue#80: new findFirstMdMatch realtime updates causing comptability issues with `onInlineBreakingEdits` 
+ fixed injectInlineMarks preservation logic, removed `skipCaretCorrection`, and made `onInlineBreakingEdits` by also reparsing whole block ✅
+
 #### Blocks
 
 1. caret restoration ignores delimiter length ✅

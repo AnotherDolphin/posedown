@@ -174,13 +174,13 @@ export class RichEditorState {
 			const { caretOffset, newBlock } = transformResult
 			if (newBlock && caretOffset !== undefined) {
 				setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
-				this.focusMarkManager.onRefocus(selection, this.editableRef)
+				this.focusMarkManager.refocus(selection, this.editableRef)
 				setCaretAt(newBlock, caretOffset)
 			}
 
 			// Prevent FocusMarks from appearing on the just-transformed element
 			// They should only appear when user navigates BACK to an existing element
-			this.focusMarkManager.skipNextFocusMarks = true
+			// this.focusMarkManager.skipNextFocusMarks = true
 			this.history.push(this.editableRef)
 			return
 		}
@@ -365,7 +365,7 @@ export class RichEditorState {
 		// ===== FocusMarks: Show markdown delimiters when cursor enters formatted elements =====
 		// This injects/ejects .pd-focus-mark spans dynamically based on cursor position
 		// Note: skipNextFocusMarks is handled inside update() - only affects inline marks
-		this.focusMarkManager.onRefocus(selection, this.editableRef)
+		this.focusMarkManager.refocus(selection, this.editableRef)
 
 		// ===== Exit Marks: Track styled elements where caret is at END (for exit-on-type) =====
 		// This is a SEPARATE feature from FocusMarks - allows typing to exit styled elements

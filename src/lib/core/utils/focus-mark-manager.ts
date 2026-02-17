@@ -4,7 +4,8 @@ import {
 	getFirstOfAncestors,
 	isInlineFormattedElement,
 	calculateCleanCursorOffset,
-	calculateCursorOffset
+	calculateCursorOffset,
+	getMainParentBlock
 } from './dom'
 import { findFirstMdMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
@@ -23,6 +24,8 @@ import {
 	BLOCK_FOCUS_MARK_CLASS
 } from '../focus/utils'
 import { isBlockTagName } from './block-marks'
+import { findAndTransform } from '../transforms/transform'
+import { domToMarkdown, markdownToDomFragment } from '../transforms'
 
 /**
  * Manages focus marks - dynamic delimiter injection for markdown formatting.
@@ -53,7 +56,7 @@ export class FocusMarkManager {
 	 * Main update method - call this on selection change.
 	 * Detects focused elements, ejects old marks, injects new marks.
 	 */
-	onRefocus(selection: Selection, root: HTMLElement): void {
+	refocus(selection: Selection, root: HTMLElement): void {
 		this.editableRef = root // Store for use in handleSpanEdit
 		if (!selection.anchorNode) return
 
@@ -74,7 +77,7 @@ export class FocusMarkManager {
 			// Inject marks into new element (unless skipping)
 			if (focusedInline && !this.skipNextFocusMarks) {
 				// Infer skipCaretCorrection from DOM state:
-				// - If activeInline still connected → navigation (don't skip correction)
+				// - If activeInline null (had no formattedEl focus) OR is still connected → navigation (don't skip correction)
 				// - If activeInline disconnected → unwrap/edit (skip correction)
 				const isNavigating = !this.activeInline || this.activeInline.isConnected
 				const skipCaretCorrection = !isNavigating
@@ -210,14 +213,20 @@ export class FocusMarkManager {
 	private injectInlineMarks(element: HTMLElement, skipCaretCorrection = false): void {
 		// if correct spans exist update refs instead of injecting new spans (handles undo/redo case)
 		const existingSpans = element.querySelectorAll(`.${FOCUS_MARK_CLASS}`)
+		const delimiters = extractInlineMarks(element)
+
 		if (existingSpans.length > 0) {
-			this.inlineSpanRefs = [...existingSpans]
-			this.activeInlineDelimiter = existingSpans[0]?.textContent || ''
-			return
+			const existingDelimiter = existingSpans[0]?.textContent || ''
+			// have to check because inlinebreakingedits leave stale dels
+			if (existingDelimiter == delimiters?.start) {
+				this.inlineSpanRefs = [...existingSpans]
+				this.activeInlineDelimiter = existingSpans[0]?.textContent || ''
+				return
+			} else {
+				existingSpans.forEach(s => s.remove())
+			}
 		}
 
-		// Extract delimiters by reverse-engineering from markdown
-		const delimiters = extractInlineMarks(element)
 		if (!delimiters) return
 
 		// Create mark spans
@@ -237,7 +246,7 @@ export class FocusMarkManager {
 		element.append(endSpan)
 
 		// correct to end (only during manual navigation, not reprocessing)
-		if (atEnd && !skipCaretCorrection) setCaretAtEnd(element, selection!)
+		if (atEnd) setCaretAtEnd(element, selection!)
 
 		this.activeInlineDelimiter = delimiters.start
 	}
@@ -356,7 +365,7 @@ export class FocusMarkManager {
 		// const hasInlinePattern2 = findFirstMarkdownMatch(parentBlock.textContent || '')
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
-		this.editableRef && this.onRefocus(selection, this.editableRef)
+		this.editableRef && this.refocus(selection, this.editableRef)
 
 		return true
 	}
@@ -482,14 +491,12 @@ export class FocusMarkManager {
 		// const matchWhole = findFirstMarkdownMatch(this.activeInline.textContent || '')
 		const matchWhole = findFirstMdMatch(this.activeInline.textContent || '')
 		const hasBreakingChange = matchWhole && matchWhole.text !== this.activeInline.textContent
-
 		if (!hasBreakingChange) return false
 
-		// Find new best pattern
-		this.unwrapAndReparseInline(selection)
-		// Unfocus to skip showing marks (like regular typing)
-		// this.skipNextFocusMarks = true
-		// this.unfocus()
+		const parentBlock = getMainParentBlock(this.activeInline!, this.editableRef!)!
+		const spanless = getSpanlessClone(parentBlock)
+		const fragment = reparse(spanless)
+		smartReplaceChildren(parentBlock, fragment, selection)
 		// maydo: may redesign to always keep marks shown (unless user types away like obsidian) but move caret to end (for whole system)
 
 		return true
@@ -508,7 +515,7 @@ export class FocusMarkManager {
 		// if spans modified/disconnected, unwrap and reparse
 		if (this.checkAndMirrorSpans(selection)) {
 			this.unwrapAndReparseInline(selection)
-			this.onRefocus(selection, this.editableRef!)
+			this.refocus(selection, this.editableRef!)
 			return true
 		}
 
@@ -767,12 +774,12 @@ export class FocusMarkManager {
 			while (this.activeBlock.firstChild) p.appendChild(this.activeBlock.firstChild)
 			this.activeBlock.replaceWith(p)
 			setCaretAt(p, offset)
-			this.onRefocus(selection, this.editableRef!)
+			this.refocus(selection, this.editableRef!)
 			return true
 		}
 
 		this.unwrapAndReparseBlock(selection)
-		this.onRefocus(selection, this.editableRef!)
+		this.refocus(selection, this.editableRef!)
 
 		return true
 	}
