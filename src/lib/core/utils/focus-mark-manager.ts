@@ -245,7 +245,7 @@ export class FocusMarkManager {
 		element.prepend(startSpan)
 		element.append(endSpan)
 
-		// correct to end (only during manual navigation, not reprocessing)
+		// correct to end
 		if (atEnd) setCaretAtEnd(element, selection!)
 
 		this.activeInlineDelimiter = delimiters.start
@@ -354,6 +354,24 @@ export class FocusMarkManager {
 		const parentBlock = formattedElement.parentElement
 		if (!parentBlock) return false
 
+		// Consume the stray adjacent delimiter char left by intermediate parsing.
+		// e.g. "**bold*" → intermediate: "*<em>bold</em>" → final "*" typed → spans mirrored
+		// to "**" → reparse produces <strong>, but the sibling "*" text would remain.
+		// Strip exactly one delimiter char from each adjacent sibling text node.
+		if (this.hasAdjacentDelimiterChar()) {
+			const delimChar = this.activeInlineDelimiter?.[0] ?? ''
+			const prev = formattedElement.previousSibling
+			const next = formattedElement.nextSibling
+			if (prev?.nodeType === Node.TEXT_NODE && prev.textContent?.endsWith(delimChar)) {
+				prev.textContent = prev.textContent!.slice(0, -1)
+				if (!prev.textContent) prev.remove()
+			}
+			if (next?.nodeType === Node.TEXT_NODE && next.textContent?.startsWith(delimChar)) {
+				next.textContent = next.textContent!.slice(1)
+				if (!next.textContent) next.remove()
+			}
+		}
+
 		const newElementFrag = reparse(formattedElement, true)
 		const newBlockFrag = buildBlockFragmentWithReplacement(
 			parentBlock,
@@ -447,6 +465,25 @@ export class FocusMarkManager {
 		}
 
 		return false
+	}
+
+	/**
+	 * Check if the active inline element has adjacent text containing
+	 * its own delimiter character. This indicates the element is in a
+	 * transient state from intermediate parsing (e.g., *<em>word</em>
+	 * where the leading * is a dangling half of **).
+	 */
+				// NOTE fix: only mirror spans if no hanging del exist (only have marks in spans)
+
+	private hasAdjacentDelimiterChar(): boolean {
+		if (!this.activeInline || !this.activeInlineDelimiter) return false
+		const delimChar = this.activeInlineDelimiter[0]
+		const prev = this.activeInline.previousSibling
+		const next = this.activeInline.nextSibling
+		return (
+			(prev?.nodeType === Node.TEXT_NODE && prev.textContent?.endsWith(delimChar)) ||
+			(next?.nodeType === Node.TEXT_NODE && next.textContent?.startsWith(delimChar))
+		) ?? false
 	}
 
 	/**
