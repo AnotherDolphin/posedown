@@ -125,10 +125,8 @@ test.describe('Rich Editor - Caret Position After Transformations', () => {
 		await page.keyboard.press('Backspace')
 		await page.keyboard.press('Backspace')
 
-		const innerHTML = await editor.innerHTML()
-		// review: still doesn't account for spans
-		expect(innerHTML).toContain('<strong>test</strong>')
-		expect(innerHTML).not.toContain('xyz')
+		await expect(editor.locator('strong')).toContainText('test')
+		await expect(editor).not.toContainText('xyz')
 	})
 
 	test('caret should stay outside pattern when typing space after it', async ({ page }) => {
@@ -284,17 +282,15 @@ test.describe('Rich Editor - Caret Position After Transformations', () => {
 		await page.keyboard.type(' **bold**')
 		await page.waitForTimeout(100)
 
-		// review: doesn't account for spans and ends up inside 'hello'
-		// Move cursor back before "hello"
-		for (let i = 0; i < 11; i++) {
-			await page.keyboard.press('ArrowLeft')
-		}
+		// Use Control+Home to reliably land before all content regardless of focus mark spans
+		await page.keyboard.press('Control+Home')
 
 		// Type at beginning (before pattern)
 		await page.keyboard.type('x')
 
-		const innerHTML = await editor.innerHTML()
-		expect(innerHTML).toContain('xhello <strong>bold</strong>')
+		await expect(editor.locator('strong')).toContainText('bold')
+		await expect(editor.locator('strong')).not.toContainText('x')
+		await expect(editor).toContainText('xhello')
 	})
 
 	test('caret should handle multiple patterns - cursor at end', async ({ page }) => {

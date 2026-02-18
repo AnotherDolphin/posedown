@@ -370,6 +370,7 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 		await expect(em).toContainText('bold italic')
 	})
 
+	// review: passes
 	test('should convert _**italic bold**_ to <em> wrapping <strong>', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 
@@ -384,6 +385,7 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 		await expect(strong).toContainText('italic bold')
 	})
 
+	// review: passes
 	test('should convert ~~**deleted bold**~~ to <del> wrapping <strong>', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 
@@ -398,6 +400,7 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 		await expect(strong).toContainText('deleted bold')
 	})
 
+	// review: passes
 	test('should convert **~~bold deleted~~** to <strong> wrapping <del>', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 
@@ -515,6 +518,7 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 			await expect(editor).toContainText('after')
 		})
 
+		// review: passes
 		test('should handle nested pattern with phrase at start', async ({ page }) => {
 			const editor = page.locator('[role="article"][contenteditable="true"]')
 
@@ -565,6 +569,7 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 			await expect(editor).toContainText('after')
 		})
 
+		// review: passes
 		test('should handle different nesting combinations at start: **_text_**', async ({
 			page
 		}) => {
@@ -610,6 +615,7 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 			await expect(strong).toContainText('x')
 		})
 
+		// review: passes
 		test('should handle nested pattern followed immediately by text', async ({ page }) => {
 			const editor = page.locator('[role="article"][contenteditable="true"]')
 
