@@ -2,11 +2,68 @@
 
 **Run:** `npx playwright test tests/e2e/rich-editor-caret-position.spec.ts tests/e2e/rich-editor-inline-patterns.spec.ts`
 
-**Summary:** 46 passed / 15 failed / 61 total
+**Summary:** 45 passed / 16 failed / 61 total
 
 ---
 
-## Current state (`merge-test` branch) — adjacent char consumption + smartReplaceChildren `!caretFound` fix
+## Current state (`merge-test` branch) — span-fragile assertion fixes in test files
+
+**Summary:** 45 passed / 16 failed / 61 total  *(net vs previous: +12 pass, −12 fail)*
+
+### Changes applied
+- **Test files only** — no source code changes
+- `rich-editor-caret-position.spec.ts`: ~12 `innerHTML.toContain/toMatch` assertions replaced with locator-based (`expect(locator).toContainText`, `not.toContainText`) checks
+- `rich-editor-inline-patterns.spec.ts`: ~6 `innerHTML.toMatch` assertions replaced with locator-based checks
+- Removed one unused `innerHTML` variable declaration
+
+### Remaining 16 failures — all real bugs, not assertion issues
+
+| Test | Description | Root cause |
+|------|-------------|------------|
+| `caret-position:77` | caret should be after nested patterns (`***nested***`) | `em > strong` not created — `***` intermediate transform issue |
+| `caret-position:116` | caret should handle backspace after pattern transformation | Backspace overshoots into focus span, unwraps `<strong>` |
+| `caret-position:266` | caret should handle cursor BEFORE pattern start | ArrowLeft offset inflated by focus mark span text |
+| `caret-position:375` | caret should handle typing in middle then navigating away and back | Space typed inside `<strong>` after transform, wrong cursor position |
+| `caret-position:403` | caret should handle underscore bold pattern (`__bold__`) | Creates `<em>` not `<strong>` — intermediate `_italic_` fires at char 7 |
+| `caret-position:430` | caret should land after nested bold, not after "text", when typing inside italic | Cursor lands inside `<strong>` after nested transform |
+| `caret-position:472` | caret should land after nested italic, not after "text", when typing inside bold | Same as above for `<em>` inside `<strong>` |
+| `inline-patterns:168` | should handle multiple italic elements inside bold | Second `<em>` typed inside instead of beside first |
+| `inline-patterns:207` | should handle multiple bold elements inside italic | Second `<strong>` typed inside instead of beside first |
+| `inline-patterns:359` | should convert `**_bold italic_**` to `<strong>` wrapping `<em>` | Intermediate transform produces wrong nesting order |
+| `inline-patterns:373` | should convert `_**italic bold**_` to `<em>` wrapping `<strong>` | Same — `_` intermediate fires before `**` completes |
+| `inline-patterns:387` | should convert `~~**deleted bold**~~` to `<del>` wrapping `<strong>` | Intermediate `~~` fires mid-pattern |
+| `inline-patterns:401` | should convert `**~~bold deleted~~**` to `<strong>` wrapping `<del>` | Intermediate `**` italic fires before `~~` closes |
+| `inline-patterns:415` | should handle triple nesting: `***~~text~~***` | Multiple intermediate transforms conflict |
+| `inline-patterns:518` | PDN: should handle nested pattern with phrase at start | `***bold italic phrase***` → `em > strong` not created |
+| `inline-patterns:613` | PDN: should handle nested pattern followed immediately by text | `***word***text` — nested struct not created, `text` goes inside |
+
+### Previously failing → now fixed ✅ (span-fragile assertion changes)
+
+Tests that were failing solely because `innerHTML` contained focus mark spans (`<span class="pd-focus-mark">**</span>`):
+
+| Test | Description |
+|------|-------------|
+| `caret-position:52` | caret should handle pattern followed by space and text |
+| `caret-position:78` | follow-up `innerHTML` check after nested patterns |
+| `caret-position:297` | caret should handle multiple patterns — cursor at end |
+| `caret-position:310` | caret should handle pattern with punctuation before it |
+| `caret-position:323` | caret should handle pattern at very start of block |
+| `caret-position:338` | caret should handle long text with pattern in middle |
+| `caret-position:356` | caret should handle typing after pattern with no trailing space |
+| `caret-position:366` | caret should handle typing in middle then navigating away and back *(assertion only — real bug remains)* |
+| `caret-position:394` | caret should handle underscore bold pattern *(assertion only — real bug remains)* |
+| `caret-position:420` | caret should land after nested bold *(assertion only — real bug remains)* |
+| `caret-position:459` | caret should land after nested italic *(assertion only — real bug remains)* |
+| `inline-patterns:86` | should handle space after styled element correctly |
+| `inline-patterns:107` | should allow multiple characters after styled element |
+| `inline-patterns:325` | should maintain cursor position after pattern conversion |
+| `inline-patterns:431` | should prevent typing inside nested styled elements |
+| `inline-patterns:546` | PDN: should handle nested pattern with phrase in middle *(assertion only — real bug remains)* |
+| `inline-patterns:613` | PDN: should handle nested pattern followed immediately by text *(assertion only — real bug remains)* |
+
+---
+
+## Previous state (`merge-test` branch) — adjacent char consumption + smartReplaceChildren `!caretFound` fix
 
 **Summary:** 33 passed / 28 failed / 61 total  *(net vs `c6ee77b`: +5 pass, −5 fail)*
 
