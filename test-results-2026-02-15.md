@@ -6,6 +6,83 @@
 
 ---
 
+## Current state (`merge-test` branch) — adjacent char consumption + smartReplaceChildren `!caretFound` fix
+
+**Summary:** 33 passed / 28 failed / 61 total  *(net vs `c6ee77b`: +5 pass, −5 fail)*
+
+### Changes applied on top of `c6ee77b`/`8bbb1fb`
+- `focus-mark-manager.ts`: `unwrapAndReparseInline` now strips stray adjacent delimiter char from sibling text before reparse
+- `focus-mark-manager.ts`: reverted `skipCaretCorrection` check in `injectInlineMarks` — `setCaretAtEnd` always runs when `atEnd`
+- `focus-mark-manager.ts`: added `hasAdjacentDelimiterChar()` helper
+- `smartReplaceChildren.ts`: Case D (`!caretFound`) now subtracts `newNode.textContent?.length` to consume pre-caret node offset
+
+### Fixed ✅ (was failing in `c6ee77b`, now passing)
+| Test reference | Description |
+|----------------|-------------|
+| `tests/e2e/rich-editor-caret-position.spec.ts:36` | caret should be preserved when pattern has text before it |
+| `tests/e2e/rich-editor-caret-position.spec.ts:78` | caret should be after nested patterns |
+| `tests/e2e/rich-editor-caret-position.spec.ts:241` | caret should be correct when adding markdown in the middle of a block |
+| `tests/e2e/rich-editor-caret-position.spec.ts:340` | caret should handle long text with pattern in middle |
+| `tests/e2e/rich-editor-caret-position.spec.ts:358` | caret should handle typing after pattern with no trailing space |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:66` | should prevent typing inside styled element after conversion |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:109` | should allow multiple characters after styled element |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:538` | Position-Dependent Nesting › should handle nested pattern in middle of line |
+
+### Still failing vs `d137566` baseline (28 tests)
+
+**Cluster A — Focus marks still showing after final delimiter completes pattern** (cursor placed inside element after transform; `onSelectionChange` never removes marks):
+| Test reference | Description |
+|----------------|-------------|
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:17` | should convert `**bold**` to `<strong>` |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:32` | should convert `*italic*` to `<em>` |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:66` | should prevent typing inside styled element |
+| `tests/e2e/rich-editor-caret-position.spec.ts:94` | caret should handle multiple patterns in sequence |
+| `tests/e2e/rich-editor-caret-position.spec.ts:196` | caret should handle pattern at end of line |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:355` | should convert `***bold italic***` |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:392` | should convert `_**italic bold**_` |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:409` | should convert `~~**deleted bold**~~` |
+
+**Cluster B — Suffix/space typed inside element** (same root cause, character lands inside instead of after):
+| Test reference | Description |
+|----------------|-------------|
+| `tests/e2e/rich-editor-caret-position.spec.ts:312` | caret should handle pattern with punctuation before it |
+
+**Cluster C — Novel failures (different root cause)**
+| Test reference | Description | Reason |
+|----------------|-------------|--------|
+| `tests/e2e/rich-editor-caret-position.spec.ts:115` | caret should handle backspace after pattern transformation | Backspace overshoots into focus span text, unwraps `<strong>` |
+| `tests/e2e/rich-editor-caret-position.spec.ts:268` | caret should handle cursor BEFORE pattern start | ArrowLeft miscounts because focus mark span text inflates offset |
+| `tests/e2e/rich-editor-caret-position.spec.ts:368` | caret should handle typing in middle then navigating away and back | Space typed inside `<strong>` triggers `onInlineBreakingEdits` unwrap |
+| `tests/e2e/rich-editor-caret-position.spec.ts:396` | caret should handle underscore bold pattern | `__bold__` → `checkAndMirrorSpans` may not recognise `_`+`_`→`__` as strong |
+
+**Cluster D — Complex nested typing / text lands in wrong element**
+| Test reference | Description |
+|----------------|-------------|
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:170` | should handle multiple italic elements inside bold |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:213` | should handle multiple bold elements inside italic |
+| `tests/e2e/rich-editor-caret-position.spec.ts:422` | caret should land after each nested bold, when typing inside italic |
+| `tests/e2e/rich-editor-caret-position.spec.ts:461` | caret should land after each nested italic, when typing inside bold |
+
+**Cluster E — Nested format structure wrong / focus marks on inner element**
+| Test reference | Description |
+|----------------|-------------|
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:375` | should convert `**_bold italic_**` to `<strong>` wrapping `<em>` |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:426` | should convert `**~~bold deleted~~**` |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:443` | should handle triple nesting `***~~text~~***` |
+
+**Cluster F — Position-Dependent Nesting**
+| Test reference | Description |
+|----------------|-------------|
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:502` | nested pattern at start of line (single word) |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:519` | nested pattern at end of line |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:560` | nested pattern with phrase at start |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:577` | nested pattern with phrase at end |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:618` | `**_text_**` nesting combinations *(test expectation may be wrong — code produces `<strong><em>` not `<em><strong>`)* |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:637` | `_**text**_` nesting combinations *(same nesting order issue)* |
+| `tests/e2e/rich-editor-inline-patterns.spec.ts:656` | single character nested pattern |
+
+---
+
 ## After commit `c6ee77b` (merged at `8bbb1fb`) — issue#80: removed `skipCaretCorrection`, rewrote `onInlineBreakingEdits`
 
 **Summary:** 28 passed / 33 failed / 61 total  *(net vs previous: −16 pass, +16 fail)*

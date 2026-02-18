@@ -129,7 +129,9 @@ export const smartReplaceChildren = (
 
 		parent.replaceChild(newNode, oldNode)
 
-		if (caretFound && !caretRestored) {
+		if (!caretFound) {
+			offsetToCaret -= newNode.textContent?.length || 0
+		} else if (!caretRestored) {
 			caretRestored = tryRestoreCaret(newNode)
 		}
 	}

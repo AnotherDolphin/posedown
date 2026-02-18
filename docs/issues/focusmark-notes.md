@@ -79,6 +79,9 @@
 - issue#81: mirroring leaves behind stray dels. Adding * to `**em*|` mirrors but leaves (doesn't consume) behind surrounding * (first char in this ex.) ⏳
   > implemented hasAdjacentDelimiterChar (to be revised)
 
+- issue#82: smartReplaceChildren misses precise caret restore if: no pattern arg was provided but there's a pattern between a new delimiter and a span delimiter (spans get auto moved, but new delimiter offset identification is missed due to pattern arg absense)
+  > meaning: For `onInlineBreakingEdits`, all spans must be flattened and a match must be passed
+
 #### Blocks
 
 1. caret restoration ignores delimiter length ✅
