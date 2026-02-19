@@ -3,7 +3,7 @@
 Tracks regressions, root-cause findings, and advice from replacing `findFirstMarkdownMatch`
 (regex-based) with `findFirstMdMatch` (CommonMark/mdast-based) across all call sites.
 
-**Last updated:** 2026-02-18
+**Last updated:** 2026-02-19
 **Branch:** merge-test
 **Baseline commits:** `5de7ac0`, `3f291f8`, `7e6ac32`
 
@@ -13,17 +13,29 @@ Tracks regressions, root-cause findings, and advice from replacing `findFirstMar
 
 **Run:** `npx playwright test tests/e2e/rich-editor-caret-position.spec.ts tests/e2e/rich-editor-inline-patterns.spec.ts`
 
-**Current:** 49 passed / 7 failed / 61 total *(`:296` caret-position occasionally flaky in sequential runs)*
+**NOTE:** with `onInlineBreakingEdits` enabled in `handleFocusedInline` - massive regression
+
+**Current:** 46 passed / 15 failed / 61 total *(results vary by run order — see flakiness note below)*
 
 | Test | Description | Bug |
 |------|-------------|-----|
+| `caret:117` | backspace after pattern transformation | flaky |
 | `caret:404` | `__bold__` → `<strong>` | BUG-1 |
 | `caret:431` | nested bold inside italic | BUG-2 |
 | `caret:474` | nested italic inside bold | BUG-2 |
 | `inline:168` | multiple italic inside bold | BUG-2 |
 | `inline:207` | multiple bold inside italic | BUG-2 |
+| `inline:244` | nested-looking patterns | flaky |
 | `inline:359` | `**_bold italic_**` → `<strong><em>` | BUG-4 |
+| `inline:374` | `_**italic bold**_` → `<em><strong>` | BUG-4 variant |
+| `inline:389` | `~~**deleted bold**~~` → `<del><strong>` | BUG-4 variant |
+| `inline:404` | `**~~bold deleted~~**` → `<strong><del>` | BUG-4 variant |
 | `inline:418` | `***~~text~~***` triple nesting | BUG-3 |
+| `inline:551` | `***bold italic phrase***` in middle | BUG-3 variant |
+| `inline:589` | `_**italic bold**_` at end | BUG-4 variant |
+| `inline:619` | `***word***` + immediate text | BUG-3 variant |
+
+> **Flakiness note:** BUG-3/BUG-4 variant rows pass or fail depending on run order and system load. The stable confirmed failures are BUG-1 through BUG-4 (`:caret:404`, `caret:431`, `caret:474`, `inline:168`, `inline:207`, `inline:359`, `inline:418`).
 
 ```bash
 npx playwright test \

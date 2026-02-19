@@ -473,7 +473,7 @@ export class FocusMarkManager {
 	 * transient state from intermediate parsing (e.g., *<em>word</em>
 	 * where the leading * is a dangling half of **).
 	 */
-				// NOTE fix: only mirror spans if no hanging del exist (only have marks in spans)
+	// NOTE fix: only mirror spans if no hanging del exist (only have marks in spans)
 
 	private hasAdjacentDelimiterChar(): boolean {
 		if (!this.activeInline || !this.activeInlineDelimiter) return false
@@ -481,9 +481,10 @@ export class FocusMarkManager {
 		const prev = this.activeInline.previousSibling
 		const next = this.activeInline.nextSibling
 		return (
-			(prev?.nodeType === Node.TEXT_NODE && prev.textContent?.endsWith(delimChar)) ||
-			(next?.nodeType === Node.TEXT_NODE && next.textContent?.startsWith(delimChar))
-		) ?? false
+			((prev?.nodeType === Node.TEXT_NODE && prev.textContent?.endsWith(delimChar)) ||
+				(next?.nodeType === Node.TEXT_NODE && next.textContent?.startsWith(delimChar))) ??
+			false
+		)
 	}
 
 	/**
@@ -530,12 +531,27 @@ export class FocusMarkManager {
 		const hasBreakingChange = matchWhole && matchWhole.text !== this.activeInline.textContent
 		if (!hasBreakingChange) return false
 
+		// const activeInlineElementRange = getDomRangeFromContentOffsets(
+		// 	this.activeInline,
+		// 	0,
+		// 	this.activeInline.textContent.length
+		// )
+		// // find if the matchWhole range lies within the activeInline
+		// console.log(matchWhole, activeInlineElementRange)
+
+		
+		// snippet 1 analysis: 32/3 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
+		// snippet 1 analysis (2nd run): 30/5 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
+		// this.unwrapAndReparseInline(selection)
+
+		// snippet 2 analysis: 31/4 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
 		const parentBlock = getMainParentBlock(this.activeInline!, this.editableRef!)!
 		const spanless = getSpanlessClone(parentBlock)
 		const fragment = reparse(spanless)
 		smartReplaceChildren(parentBlock, fragment, selection)
-		// maydo: may redesign to always keep marks shown (unless user types away like obsidian) but move caret to end (for whole system)
 
+
+		// maydo: may redesign to always keep marks shown (unless user types away like obsidian) but move caret to end (for whole system)
 		return true
 	}
 
