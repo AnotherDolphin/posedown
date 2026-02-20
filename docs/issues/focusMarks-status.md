@@ -1,7 +1,7 @@
 # FocusMarks - Current Status
 
-**Last Updated:** 2026-02-11
-**Latest Commit:** Block issues #12, #13 fixed (invalid H→P flattening, undo/redo focus mark reassignment)
+**Last Updated:** 2026-02-20
+**Latest Commit:** `b32db79` — findFirstMdMatch regression tracking, smartReplace offset fix, stray delimiter cleanup
 
 > **For architecture, design decisions, and how it works**, see [../focusMarks-design.md](../focusMarks-design.md)
 
@@ -12,6 +12,16 @@
 Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Edge delimiter typing, marks escape, delimiter edit reparsing, and **block marks editing** (headings) fully implemented. Utilities extracted to [focus/utils.ts](../../src/lib/core/focus/utils.ts) for better modularity.
 
 ## Recent Changes (Last 2 Weeks)
+
+### 2026-02-13 to 2026-02-20
+- ✅ **Issue #77 FIXED** - Consecutive inline elements no longer cause caret jump; new test: `consecutive-elements.spec.ts`
+- ✅ **Issue #78 FIXED** - Invalid span edits are now flattened inline inside `checkAndMirrorSpans()` (replaces span with text node + restores caret)
+- ✅ **Issue #80 FIXED** - `injectInlineMarks` now validates existing spans match current delimiter (prevents stale refs from `onInlineBreakingEdits`); `onInlineBreakingEdits` now reparses whole parent block (not just active inline); `skipCaretCorrection` parameter removed — `injectInlineMarks` always corrects to end when caret is at end
+- ✅ **Issue #81 FIXED** (preliminary) - `hasAdjacentDelimiterChar()` prevents mirroring when hanging delimiter chars exist adjacent to element; strips stray chars in `unwrapAndReparseInline`
+- ✅ **smartReplace offset fix** - `smartReplaceChildren` now correctly adjusts offset when `oldNode` without caret is replaced
+- ✅ **New: `findFirstMdMatch()`** - CommonMark/mdast-compliant replacement for `findFirstMarkdownMatch()` (which is now deprecated); migration tracker in `findFirstMdMatch-regression-tracker.md`
+- ✅ **API renamed**: `onRefocus()` → `refocus()`, `handleActiveInline()` → `onEdit()`, `handleActiveBlock()` removed (merged into `onEdit()`), `tryHandleEdgeInput()` → `handleInlineMarkEdges()` + `handleBlockMarkEdges()`, `onInlineMarkChange()` → `handleFocusedInline()`, `unwrapAndReparse()` → `unwrapAndReparseInline()` + `unwrapAndReparseBlock()`
+- ✅ New test suite: `inline-mirroring.spec.ts` (364 lines), `consecutive-elements.spec.ts` (84 lines) — total now 13 test files
 
 ### Block Marks Editing (Jan 27 - Feb 1)
 - ✅ **Headings (H1-H6) fully editable** - Type `#` to upgrade, backspace to downgrade
@@ -113,29 +123,29 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## Test Results
 
-**Full test suite:** 58/94 passing (61.7%)
+**Focus-marks e2e suite:** 13 test files (was 9)
 
-### Breaking Delimiters (Issue #10): 8/11 passing ✅
-- ✅ Type `*` in middle of italic - breaks pattern
-- ✅ Type `**` in middle of bold - breaks pattern
-- ✅ Type `~~` in middle of strikethrough - breaks pattern
-- ✅ Regular characters don't break
-- ✅ Space doesn't break
-- ✅ Rogue delimiter scenarios
-- ✅ Adjacent formatted elements
-- ✅ Breaking at start/end
-- ❌ Cursor position after break (3 failures)
+**General caret/inline tests (tracked separately):**
+- `rich-editor-caret-position.spec.ts`: 23/26 passing (3 confirmed failures: BUG-1, BUG-2)
+- `rich-editor-inline-patterns.spec.ts`: 26/30 passing (4 confirmed failures: BUG-2, BUG-3, BUG-4)
+- See [findFirstMdMatch-regression-tracker.md](./findFirstMdMatch-regression-tracker.md) for full analysis
+
+**Open confirmed bugs:**
+- **BUG-1** (`caret:404`) — `__bold__` creates `<em>` instead of `<strong>` (underscore round-trip failure)
+- **BUG-2** (`caret:431`, `caret:474`, `inline:168`, `inline:207`) — Cursor jumps to parent end after nested inner-element transform
+- **BUG-3** (`inline:418`) — `***word***` loses outer `*` via intermediate `<em>` mirroring
+- **BUG-4** (`inline:359`) — `**_bold italic_**` blocked by `handleInlineMarkEdges` at `<em>` right edge
 
 **Test files:** [tests/e2e/focus-marks/](../../tests/e2e/focus-marks/)
-- 9 test files, 94 tests total
+- 13 test files total (4 caret-positioning, 4 delimiter-editing, 3 activation, 1 pattern-detection, 1 unit)
 - Core features: Working
-- Edge cases: 36 failures (mostly cursor positioning, nested transformations)
+- Regressions tracked in `findFirstMdMatch-regression-tracker.md`
 
 ## Next Steps
 
-**High Priority:** Block issues #2, #3, #33 (errors), #77 (caret jump)
+**High Priority:** BUG-1/BUG-2/BUG-3/BUG-4 from `findFirstMdMatch` migration (see tracker); Block issues #2, #3, #33
 
-**Medium Priority:** Blockquote/list editing, cursor edge cases, pattern normalization
+**Medium Priority:** Option C pre-transform guard for BUG-1/BUG-3; blockquote/list editing; cursor edge cases
 
 **Low Priority:** Codeblock marks, list UX, performance profiling, animations
 
@@ -144,8 +154,8 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integration-points) for architecture.
 
 **Core Implementation:**
-- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (~800 lines) - Main orchestration
-  - Key APIs: `tryHandleEdgeInput()`, `handleActiveInline()`, `handleActiveBlock()`
+- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (~864 lines) - Main orchestration
+  - Public APIs: `refocus()`, `onEdit()`, `handleInlineMarkEdges()`, `handleBlockMarkEdges()`, `unfocus()`, `unwrapAndReparseInline()`, `unwrapAndReparseBlock()`
   - State: `activeInline`, `activeBlock`, `inlineSpanRefs`, `blockSpanRefs`
 - [focus/utils.ts](../../src/lib/core/focus/utils.ts) (224 lines) - **NEW** Extracted utilities
   - `extractInlineMarks()`, `extractBlockMarks()`, `createMarkSpan()`
@@ -163,24 +173,26 @@ See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integra
 - [selection.ts](../../src/lib/core/utils/selection.ts) - `setCaretAt()` (now supports element nodes), `setCaretAtEnd()`
 
 **Tests:**
-- [tests/e2e/focus-marks/](../../tests/e2e/focus-marks/) - All test suites (9 files)
-- [tests/e2e/focus-marks/block-delimiter-editing.spec.ts](../../tests/e2e/focus-marks/block-delimiter-editing.spec.ts) - **NEW** Block editing tests (336 lines)
-- [tests/unit/smartReplaceChildren.spec.ts](../../tests/unit/smartReplaceChildren.spec.ts) - **NEW** Unit tests (509 lines)
-- [block-transformation.spec.ts](../../tests/e2e/focus-marks/delimiter-editing/block-transformation.spec.ts) - Block type conversion tests (756 lines)
+- [tests/e2e/focus-marks/](../../tests/e2e/focus-marks/) - All test suites (13 files)
+- [tests/unit/smartReplaceChildren.spec.ts](../../tests/unit/smartReplaceChildren.spec.ts) - Unit tests (509 lines)
+- [delimiter-editing/inline-mirroring.spec.ts](../../tests/e2e/focus-marks/delimiter-editing/inline-mirroring.spec.ts) - **NEW** Inline mirroring tests (364 lines)
+- [caret-positioning/consecutive-elements.spec.ts](../../tests/e2e/focus-marks/caret-positioning/consecutive-elements.spec.ts) - **NEW** Consecutive element caret tests (84 lines)
+- [delimiter-editing/block-transformation.spec.ts](../../tests/e2e/focus-marks/delimiter-editing/block-transformation.spec.ts) - Block type conversion tests (756 lines)
 - [TEST-INDEX.md](../../tests/e2e/focus-marks/TEST-INDEX.md) - Test organization guide
 
 ## Issue Tracker
 
 > See [focusmark-notes.md](./focusmark-notes.md) for complete issue history
 
-**Recently Fixed (Jan 26 - Feb 4):**
+**Recently Fixed (Jan 26 - Feb 20):**
 - Edge delimiter typing, breaking delimiters, caret positioning
 - Mirroring, empty element typing, span edge editing
 - Block transforms, inline formatting preservation, activation control
+- #77 consecutive elements, #78 invalid span flattening, #80 injectInlineMarks staleness + breaking edits, #81 stray delimiter cleanup
 
 **Open Issues:**
-- #77: Consecutive elements caret jump
+- BUG-1/2/3/4: `findFirstMdMatch` migration regressions (see tracker)
 - #343: Null error reading 'childNodes'
 - Block #2-6: querySelectorAll error, mark deletion, blockquote/codeblock/list issues
 
-**Status:** 16 major issues fixed in last 2 weeks, 9 open issues remaining
+**Status:** 20+ major issues fixed, regressions from `findFirstMdMatch` migration are the current priority
