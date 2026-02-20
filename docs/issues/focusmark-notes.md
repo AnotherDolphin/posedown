@@ -74,7 +74,11 @@
 - issue#79: nested inline delmiiter inputs OR new transforms move caret to the end of (inline) parent esp. on more than one nested additions
 
 - issue#80: new findFirstMdMatch realtime updates causing comptability issues with `onInlineBreakingEdits` 
- fixed injectInlineMarks preservation logic, removed `skipCaretCorrection`, and made `onInlineBreakingEdits` by also reparsing whole block ✅
+ fixed injectInlineMarks preservation logic, removed `skipCaretCorrection`, ~~and made `onInlineBreakingEdits` by also reparsing whole block~~ ✅
+
+- issue#80.1: `findFirstMdMatch` causes intermediary breaking edits to a formatted element. `**bo*ld**` matches italic, but that is intrusive and unintiuitive. ✅
+  > restored `findFirstMarkdownMatch` match as a special case in `onInlineBreakingEdits`
+  > preference to custom matching in some cases over findFirstMdMatch commanmark's strict appoach
 
 - issue#81: mirroring leaves behind stray dels. Adding * to `**em*|` mirrors but leaves (doesn't consume) behind surrounding * (first char in this ex.) ⏳
   > implemented hasAdjacentDelimiterChar (to be revised)

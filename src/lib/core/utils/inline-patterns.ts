@@ -158,7 +158,6 @@ export function extractMatches(
  * Find the first markdown pattern match in the text
  * Returns position, matched text, and delimiter length for inline replacement
  *
- * @deprecated Use {@link findFirstMdMatch} instead — it uses the CommonMark-compliant
  * mdast parser and matches the precedence rules of the AST pipeline.
  */
 export function findFirstMarkdownMatch(

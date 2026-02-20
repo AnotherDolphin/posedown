@@ -407,3 +407,150 @@ test.describe('Rich Editor - Focus Mark Breaking Delimiters (Issue#10)', () => {
 		expect(text).toBeTruthy()
 	})
 })
+
+// Tests for onInlineBreakingEdits (focus-mark-manager.ts:521) — input-time detection path.
+// Uses findFirstMarkdownMatch (old regex, site 5 — see findFirstMdMatch-regression-tracker.md).
+// Each pattern uses lazy .+? — it finds the NEAREST valid closing delimiter after the opening one.
+// "**bo**ld**" → lazy bold match closes at the first available ** → "**bo**" (proper substring) → break fires.
+// "**bo*ld**" → lazy bold match scans past the single * (not **) → only ** is at the end → whole string → no break.
+//   (Note: findFirstMdMatch/CommonMark would parse "**bo*ld**" differently, but that is irrelevant here.)
+test.describe('onInlineBreakingEdits — input-time detection', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto(EDITOR_URL)
+		await page.waitForLoadState('networkidle')
+
+		// Clear the editor
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+		await editor.click()
+		await page.keyboard.press('Control+a')
+		await page.keyboard.press('Backspace')
+		await page.waitForTimeout(50)
+	})
+
+	test('typing ** in middle of bold triggers input-time break detection', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text: **bold**
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		// 3. Navigate to after "bo" (Home → past ** focus mark + b + o)
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // past opening **
+		await page.keyboard.press('ArrowRight')
+		await page.keyboard.press('ArrowRight') // b
+		await page.keyboard.press('ArrowRight') // o
+
+		// 4. Type ** to break — element text becomes "**bo**ld**"
+		await page.keyboard.type('**')
+
+		// 5. NO Escape — wait for input-time detection
+		await page.waitForTimeout(150)
+
+		// findFirstMarkdownMatch("**bo**ld**") → matches "**bo**" (proper substring) → break fires
+		// After break+refocus, strong contains "bo" with focus marks → textContent "**bo**"
+		const firstStrong = editor.locator('strong').first()
+		const firstStrongText = await firstStrong.textContent()
+		expect(firstStrongText).toBe('**bo**')
+
+		// "ld" should be outside the strong element
+		const fullText = await editor.textContent()
+		expect(fullText).toContain('ld')
+
+		const html = await editor.innerHTML()
+		expect(html).toMatch(/<strong>/)
+	})
+
+	test('typing * in middle of italic triggers input-time break detection', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create italic text: *italic*
+		await editor.pressSequentially('*italic*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		// 2. Click to show focus marks
+		await em.click()
+		await page.waitForTimeout(50)
+
+		// 3. Navigate to after "ita" (Home → past * focus mark + i + t + a)
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // past opening *
+		await page.keyboard.press('ArrowRight') // i
+		await page.keyboard.press('ArrowRight') // t
+		await page.keyboard.press('ArrowRight') // a
+
+		// 4. Type * to break — element text becomes "*ita*lic*"
+		await page.keyboard.type('*')
+
+		// 5. NO Escape — wait for input-time detection
+		await page.waitForTimeout(150)
+
+		// findFirstMarkdownMatch("*ita*lic*") → matches "*ita*" (proper substring) → break fires
+		// After break+refocus, em contains "ita" with focus marks → textContent "*ita*"
+		const firstEm = editor.locator('em').first()
+		const firstEmText = await firstEm.textContent()
+		expect(firstEmText).toBe('*ita*')
+
+		// "lic" should be outside the em element
+		const fullText = await editor.textContent()
+		expect(fullText).toContain('lic')
+
+		const html = await editor.innerHTML()
+		expect(html).toMatch(/<em>/)
+	})
+
+	test('typing single * in middle of bold does NOT trigger break (wrong delimiter length)', async ({
+		page
+	}) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// 1. Create bold text: **bold**
+		await editor.pressSequentially('**bold**')
+		await page.waitForTimeout(100)
+
+		const strong = editor.locator('strong')
+		await expect(strong).toBeVisible()
+
+		// 2. Click to show focus marks
+		await strong.click()
+		await page.waitForTimeout(50)
+
+		// 3. Navigate to after "bo" (Home → past ** focus mark + b + o)
+		await page.keyboard.press('Home')
+		await page.keyboard.press('ArrowRight') // past opening **
+		await page.keyboard.press('ArrowRight')
+		await page.keyboard.press('ArrowRight') // b
+		await page.keyboard.press('ArrowRight') // o
+
+		// 4. Type single * — element text becomes "**bo*ld**"
+		await page.keyboard.type('*')
+
+		// 5. Wait for any potential detection
+		await page.waitForTimeout(150)
+
+		// findFirstMarkdownMatch("**bo*ld**"): lazy bold match scans for closing **
+		// — the single * is not **, so it keeps consuming until ** at the very end
+		// → whole string match → matchWhole.text === textContent → no break
+		await expect(strong).toBeVisible()
+		const strongText = await strong.textContent()
+		expect(strongText).toContain('bo*ld')
+
+		// No structural change — still exactly one strong element
+		const strongCount = await editor.locator('strong').count()
+		expect(strongCount).toBe(1)
+	})
+})

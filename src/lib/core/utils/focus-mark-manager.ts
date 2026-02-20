@@ -7,7 +7,7 @@ import {
 	calculateCursorOffset,
 	getMainParentBlock
 } from './dom'
-import { findFirstMdMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
+import { findFirstMarkdownMatch, findFirstMdMatch, SUPPORTED_INLINE_DELIMITERS } from './inline-patterns'
 import { isSupportedBlockDelimiter } from './block-patterns'
 import { smartReplaceChildren } from '../dom/smartReplaceChildren'
 import { reparse, buildBlockFragmentWithReplacement, getDomRangeFromContentOffsets } from '../dom'
@@ -526,8 +526,8 @@ export class FocusMarkManager {
 		// e.g. **bold** => **bo**ld**
 		// then match a new pattern where the old closing delimiter is now just text
 		// and the new closing focus mark is at the closest valid activeDelimiter to the first span
-		// const matchWhole = findFirstMarkdownMatch(this.activeInline.textContent || '')
-		const matchWhole = findFirstMdMatch(this.activeInline.textContent || '')
+		const matchWhole = findFirstMarkdownMatch(this.activeInline.textContent || '')
+		// const matchWhole = findFirstMdMatch(this.activeInline.textContent || '')
 		const hasBreakingChange = matchWhole && matchWhole.text !== this.activeInline.textContent
 		if (!hasBreakingChange) return false
 
@@ -542,13 +542,13 @@ export class FocusMarkManager {
 		
 		// snippet 1 analysis: 32/3 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
 		// snippet 1 analysis (2nd run): 30/5 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
-		// this.unwrapAndReparseInline(selection)
+		this.unwrapAndReparseInline(selection)
 
-		// snippet 2 analysis: 31/4 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
-		const parentBlock = getMainParentBlock(this.activeInline!, this.editableRef!)!
-		const spanless = getSpanlessClone(parentBlock)
-		const fragment = reparse(spanless)
-		smartReplaceChildren(parentBlock, fragment, selection)
+		// // snippet 2 analysis: 31/4 in [tests/e2e/rich-editor-inline-patterns.spec.ts]
+		// const parentBlock = getMainParentBlock(this.activeInline!, this.editableRef!)!
+		// const spanless = getSpanlessClone(parentBlock)
+		// const fragment = reparse(spanless)
+		// smartReplaceChildren(parentBlock, fragment, selection)
 
 
 		// maydo: may redesign to always keep marks shown (unless user types away like obsidian) but move caret to end (for whole system)

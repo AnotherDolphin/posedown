@@ -13,9 +13,9 @@ Tracks regressions, root-cause findings, and advice from replacing `findFirstMar
 
 **Run:** `npx playwright test tests/e2e/rich-editor-caret-position.spec.ts tests/e2e/rich-editor-inline-patterns.spec.ts`
 
-**NOTE:** with `onInlineBreakingEdits` enabled in `handleFocusedInline` - massive regression
+**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`).
 
-**Current:** 46 passed / 15 failed / 61 total *(results vary by run order — see flakiness note below)*
+**Current:** ~44–49 passed / ~12–17 failed / 61 total *(flaky — results vary by run order, see flakiness note below)*
 
 | Test | Description | Bug |
 |------|-------------|-----|
@@ -59,7 +59,9 @@ npx playwright test \
 | 2 | `src/lib/core/utils/dom.ts:446` | `processMarkdownInTextNodes` — paste only | `findFirstMdMatch` (new) |
 | 3 | `src/lib/core/utils/focus-mark-manager.ts:355` | `unwrapAndReparseInline` — cursor | `findFirstMdMatch` (new) |
 | 4 | `src/lib/core/utils/focus-mark-manager.ts:453` | `handleNestedPatterns` — cursor | `findFirstMarkdownMatch` (old) |
-| 5 | `src/lib/core/utils/focus-mark-manager.ts:490` | `onInlineBreakingEdits` — `text !==` check | `findFirstMarkdownMatch` (old) |
+| 5 | `src/lib/core/utils/focus-mark-manager.ts:490` | `onInlineBreakingEdits` — `text !==` check | `findFirstMarkdownMatch` (old) — **intentional, keep** |
+
+**Site 5 decision — keep `findFirstMarkdownMatch`:** The break-detection heuristic at site 5 relies on `matchWhole.text !== this.activeInline.textContent`. The old regex uses lazy `.+?` per pattern, so `"**bo**ld**"` matches the first available `**...**` span (`"**bo**"` — a proper substring) and fires the break. `findFirstMdMatch` (CommonMark) would parse the focus-mark-inclusive text differently for edge cases (e.g. `"**bo*ld**"` — CommonMark may identify an italic where the old regex finds bold spanning the whole string). Replacing with `findFirstMdMatch` at this site risks false positives (break fires when it shouldn't) or false negatives (break doesn't fire when it should). The old function's lazy-match behaviour is the correct semantics for this specific substring check. Covered by `breaking-delimiters.spec.ts` lines `:430`, `:473`, `:516`.
 
 ---
 
@@ -360,6 +362,29 @@ If the owner wants to pursue the `data-delimiter` approach as a **longer-term ar
 | `:589` | PDN: `start _**italic bold**_` at end | ✅ |
 | `:604` | PDN: single char `***x***` | ✅ |
 | `:619` | PDN: `***word***` + immediate text | ✅ |
+
+### `focus-marks/delimiter-editing/breaking-delimiters.spec.ts`
+
+8 pass / 6 fail (pre-existing failures unrelated to `findFirstMdMatch` migration)
+
+| Line | Description | Status |
+|------|-------------|--------|
+| `:20` | typing `*` in middle of italic — Escape path | ❌ pre-existing |
+| `:66` | typing `*` in italic — cursor position after transform | ❌ pre-existing |
+| `:103` | typing `**` in middle of bold — Escape path | ❌ pre-existing |
+| `:149` | typing `**` in bold — cursor position after transform | ❌ pre-existing |
+| `:186` | typing `~~` in strikethrough — Escape path | ❌ pre-existing |
+| `:228` | regular chars do NOT break pattern | ✅ |
+| `:262` | space does NOT break pattern | ✅ |
+| `:298` | rogue delimiter scenario | ✅ |
+| `:326` | adjacent formatted elements with shared delimiters | ❌ pre-existing |
+| `:349` | breaking delimiter at start | ✅ |
+| `:380` | breaking delimiter at end | ✅ |
+| `:430` | `**` mid-bold — input-time detection fires (site 5) | ✅ |
+| `:473` | `*` mid-italic — input-time detection fires (site 5) | ✅ |
+| `:516` | single `*` mid-bold — no break (lazy match spans whole string) | ✅ |
+
+The 6 pre-existing failures test the Escape/blur path (`checkAndMirrorSpans → unwrapAndReparseInline`), not the `onInlineBreakingEdits` input-time path. The 3 new tests (`:430`, `:473`, `:516`) specifically validate site 5 behaviour.
 
 ### Applied test fixes (span-fragile assertion cleanup)
 
