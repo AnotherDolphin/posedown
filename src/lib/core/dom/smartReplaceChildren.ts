@@ -129,8 +129,17 @@ export const smartReplaceChildren = (
 
 		parent.replaceChild(newNode, oldNode)
 
+		// ISSUE: if first newNode is LONGER than first oldNode, it may HAVE to steal the caret now 
+		// IF newNode.length >= offsetToCaret
 		if (!caretFound) {
-			offsetToCaret -= newNode.textContent?.length || 0
+			const newLen = newNode.textContent?.length || 0
+			if (offsetToCaret >= 0 && offsetToCaret <= newLen) {
+				// New node is longer than old and now contains the caret position
+				caretFound = true
+				caretRestored = tryRestoreCaret(newNode)
+			} else {
+				offsetToCaret -= newLen
+			}
 		} else if (!caretRestored) {
 			caretRestored = tryRestoreCaret(newNode)
 		}
