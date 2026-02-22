@@ -112,20 +112,20 @@ export const smartReplaceChildren = (
 		// Case D: Nodes are Different -> Replace
 
 		// Preserve focus mark spans from old node onto the new replacement
-		const hasFocusSpans = [oldNode.firstChild, oldNode.lastChild].every(
-			n => n?.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className === FOCUS_MARK_CLASS
-		)
+		// const hasFocusSpans = [oldNode.firstChild, oldNode.lastChild].every(
+		// 	n => n?.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className === FOCUS_MARK_CLASS
+		// )
 
-		if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
-			const openingSpan = oldNode.firstChild as HTMLElement
-			const closingSpan = oldNode.lastChild as HTMLElement
+		// if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
+		// 	const openingSpan = oldNode.firstChild as HTMLElement
+		// 	const closingSpan = oldNode.lastChild as HTMLElement
 
-			;(newNode as HTMLElement).prepend(openingSpan)
-			newNode.appendChild(closingSpan)
+		// 	;(newNode as HTMLElement).prepend(openingSpan)
+		// 	newNode.appendChild(closingSpan)
 
-			// Add back the delimiter offset that was subtracted earlier
-			offsetToCaret += delimiterOffsetDiff
-		}
+		// 	// Add back the delimiter offset that was subtracted earlier
+		// 	offsetToCaret += delimiterOffsetDiff
+		// }
 
 		parent.replaceChild(newNode, oldNode)
 

@@ -65,7 +65,8 @@
 - issue#78: typing between inline delimiters `*|*word**` causes random behavior on reparse ✅
   > flatten spans that become invalid before reparsing
 
-- issue#78.1: (minor issue with unwrapAndReparseInline) there's a mismatch between the transform pipeline and how findFirstMarkdownMatch works becuase the pipleine is commonmark compliant and findFirstMarkdownMatch is greedy (e.g. `*|*bold**` => `**|*bold**` input acts differently in reparse than what findFirstMarkdownMatch recognizes) which affect caret recovery in smartReplace ⏳
+- issue#78.1: (minor issue with unwrapAndReparseInline) there's a mismatch between the transform pipeline and how findFirstMarkdownMatch works becuase the pipleine is commonmark compliant and findFirstMarkdownMatch is greedy (e.g. `*|*bold**` => `**|*bold**` input acts differently in reparse than what findFirstMarkdownMatch recognizes) which affect caret recovery in smartReplace ✅
+  > findFirstMdMatch
 
 - issue78.2: dispcrepancy between new findFirstMdMatch and findFirstMarkdownMatch ⏳
   > main issue lies in transform.ts call. The old had a `preventNesting` guard but the new one does natural premature transforms on \*\*bold\* to \**bold*
@@ -79,12 +80,19 @@
 - issue#80.1: `findFirstMdMatch` causes intermediary breaking edits to a formatted element. `**bo*ld**` matches italic, but that is intrusive and unintiuitive. ✅
   > restored `findFirstMarkdownMatch` match as a special case in `onInlineBreakingEdits`
   > preference to custom matching in some cases over findFirstMdMatch commanmark's strict appoach
+  
+- issue#80.2: according to regression testing, more tests still pass in `tests\e2e\rich-editor-inline-patterns.spec.ts` if the whole call to onInlineBreakingEdits is removed in handleFocusedInline
 
 - issue#81: mirroring leaves behind stray dels. Adding * to `**em*|` mirrors but leaves (doesn't consume) behind surrounding * (first char in this ex.) ⏳
   > implemented hasAdjacentDelimiterChar (to be revised)
 
 - issue#82: smartReplaceChildren misses precise caret restore if: no pattern arg was provided but there's a pattern between a new delimiter and a span delimiter (spans get auto moved, but new delimiter offset identification is missed due to pattern arg absense) ❌
   > meaning: For `onInlineBreakingEdits`, all spans must be flattened and a match must be passed
+
+#### findFirstMd regression
+
+- BUG-2: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation.
+  > block level reparse after any new pattern needed
 
 #### Blocks
 
