@@ -35,6 +35,9 @@ export const smartReplaceChildren = (
 		offsetToCaret = range.toString().length
 	}
 
+	// Store raw offset before delimiter subtraction (used later to guard add-back in Case D)
+	let rawOffsetToCaret = offsetToCaret
+
 	// Calculate removed delimiter offset if pattern matched
 	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
 		if (offsetToCaret >= patternMatch.end) {
@@ -117,16 +120,25 @@ export const smartReplaceChildren = (
 		)
 
 		if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
+			// ISSUE+3: should NOT preserve outdated/repurposed spans
+			// must only move spans that are in total non-conflict with the new pattern
+			// new patterns may not have focus mark spans active for either ends
+			// if it matches with a pre-existing delimiter inside an outdated span
+
 			const openingSpan = oldNode.firstChild as HTMLElement
 			const closingSpan = oldNode.lastChild as HTMLElement
 
 			;(newNode as HTMLElement).prepend(openingSpan)
 			newNode.appendChild(closingSpan)
 
-			// Add back the delimiter offset that was subtracted earlier
-			// ISSUE+: we only need to add back the delimiter IF that is the one that belongs to the PATTERN
-			// that we subtracted the original delimiterOffsetDiff (i.e the new match itself)
-			offsetToCaret += delimiterOffsetDiff
+			// ISSUE+1 fix
+			// Only add back the delimiter offset if this node IS the pattern-match node —
+			// i.e. the caret's original (pre-subtraction) position was within the matched range.
+			// Without this guard, an adjacent focused node (not the new match) would incorrectly
+			// shift the caret by delimiterOffsetDiff.
+			if (!patternMatch || (rawOffsetToCaret >= patternMatch.start && rawOffsetToCaret < patternMatch.end)) {
+				offsetToCaret += delimiterOffsetDiff
+			}
 		}
 
 		parent.replaceChild(newNode, oldNode)

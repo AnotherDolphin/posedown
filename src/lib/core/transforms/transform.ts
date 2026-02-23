@@ -8,7 +8,7 @@ import {
 	findFirstMdMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
-import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone } from '../focus/utils'
+import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone, removeFocusMarkSpans } from '../focus/utils'
 import { domToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
@@ -92,9 +92,11 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 			: null
 		if (blockFocusSpan) blockFocusSpan.remove()
 
-		// Pass pattern match info for accurate cursor positioning
-		// ISSUE+: must unfocus to stop preservation on outdated focus spans
-		// the replacement fragment operates on a spanless block, but we pass whole block
+		// ISSUE+2 fix
+		// Strip inline focus spans so offsetToCaret is in the same coordinate space as patternMatch.
+		// patternMatch was found from the spanless clone; block focus span already removed above.
+		removeFocusMarkSpans(block)
+
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
 
 		if (blockFocusSpan) block.prepend(blockFocusSpan)

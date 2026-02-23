@@ -91,6 +91,8 @@
 
 - issue: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the *
 
+- issue: adding a breaking and earlier closing delimiter wrongly moves the caret back. i.e typing \* here: `*ok| ok*` places the caret after the first 'o' [issue+3]
+
 #### findFirstMd regression
 
 - BUG-2: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation.

@@ -174,8 +174,12 @@ export function atEdgeOfFormatted(textNode: Text, offset: number): HTMLElement |
  */
 export function getSpanlessClone(element: HTMLElement): HTMLElement {
 	const clone = element.cloneNode(true) as HTMLElement
-	clone.querySelectorAll(`.${FOCUS_MARK_CLASS}`).forEach(span => span.remove())
+	removeFocusMarkSpans(clone)
 	return clone
+}
+
+export const removeFocusMarkSpans = (element: HTMLElement) => {
+	element.querySelectorAll(`.${FOCUS_MARK_CLASS}`).forEach(span => span.remove())
 }
 
 /**
