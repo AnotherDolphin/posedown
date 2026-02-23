@@ -13,9 +13,9 @@ Tracks regressions, root-cause findings, and advice from replacing `findFirstMar
 
 **Run:** `npx playwright test tests/e2e/rich-editor-caret-position.spec.ts tests/e2e/rich-editor-inline-patterns.spec.ts`
 
-**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`).
+**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`). BUG-1 fixed via `findFirstMdMatchForTransform` at site 1.
 
-**Current:** ~44–49 passed / ~12–17 failed / 61 total *(flaky — results vary by run order, see flakiness note below)*
+**Current:** ~49–52 passed / ~9–12 failed / 61 total *(flaky — results vary by run order, see flakiness note below)*
 
 | Test | Description | Bug |
 |------|-------------|-----|
@@ -55,7 +55,7 @@ npx playwright test \
 
 | # | File | Function | Current state |
 |---|------|----------|---------------|
-| 1 | `src/lib/core/transforms/transform.ts:52` | `findAndTransform` — guard + inline transform | `findFirstMdMatch` (new) |
+| 1 | `src/lib/core/transforms/transform.ts:49` | `findAndTransform` — guard + inline transform | `findFirstMdMatchForTransform` (wrapper) |
 | 2 | `src/lib/core/utils/dom.ts:446` | `processMarkdownInTextNodes` — paste only | `findFirstMdMatch` (new) |
 | 3 | `src/lib/core/utils/focus-mark-manager.ts:355` | `unwrapAndReparseInline` — cursor | `findFirstMdMatch` (new) |
 | 4 | `src/lib/core/utils/focus-mark-manager.ts:453` | `handleNestedPatterns` — cursor | `findFirstMarkdownMatch` (old) |
@@ -123,16 +123,20 @@ This was verified empirically with e2e tests:
 
 ## Confirmed Bugs
 
-### BUG-1 — `__bold__` creates `<em>` instead of `<strong>`
+### BUG-1 — `__bold__` creates `<em>` instead of `<strong>` ✅ FIXED
 
 At char 7 of `__bold__`, CommonMark parses `__bold_` as `_` + `<em>bold</em>`. The 8th `_`
 triggers `unwrapAndReparseInline` which serialises `<em>` as `*bold*` (ast-utils always uses
 `*`, never `_`). The round-trip fails due to the `**` vs `__` asymmetry above — reparse of
-`_*bold*_` produces another `<em>`, not `<strong>`. Fix: suppress single-delimiter intermediate
-matches flanked by the same delimiter char at `transform.ts` site 1 (see Fix Strategy below,
-Option C).
+`_*bold*_` produces another `<em>`, not `<strong>`.
 
-**Failing tests:** `caret:404`
+**Fix:** `findFirstMdMatchForTransform` wrapper at `inline-patterns.ts` — suppresses
+single-delimiter matches where `text[match.start - 1] === text[match.start]` (hallmark of
+an incomplete `__`/`**` sequence). Used at `transform.ts:49` (site 1) in place of the bare
+`findFirstMdMatch` call. Also suppresses `**bold*` intermediate (self-healing but now
+correctly blocked at source too).
+
+**Previously failing:** `caret:404` — **now passing**
 
 ### BUG-2 — Cursor jumps to parent end after nested inner-element transform
 

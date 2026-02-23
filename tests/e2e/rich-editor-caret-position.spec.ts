@@ -513,4 +513,48 @@ test.describe('Rich Editor - Caret Position After Transformations', () => {
 		await expect(italics.nth(1)).not.toContainText('x')
 		await expect(strong).toContainText('x')
 	})
+
+	test('caret should land after nested italic (underscore), not after "text", when typing inside italic (asterisk)', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		// Step 1: type the parent italic
+		await editor.pressSequentially('*italic text*')
+		await page.waitForTimeout(100)
+
+		await expect(editor.locator('em')).toHaveCount(1)
+		await expect(editor.locator('em')).toBeVisible()
+
+		// Step 2: navigate inside between "italic" and "text"
+		await editor.locator('em').click()
+		await page.waitForTimeout(50)
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowRight') // 1 for *, 7 for "italic "
+
+		// Step 3a: type first nested italic, then immediately type x — caret must land after first nested </em>
+		await editor.pressSequentially('*i*')
+		await page.waitForTimeout(100)
+		await editor.pressSequentially('x')
+
+		// x should be outside nested em but inside parent em
+		const outerEm = editor.locator('em').first()
+		const nestedEms = outerEm.locator('em')
+		await expect(nestedEms).toHaveCount(1)
+		await expect(nestedEms.first()).toContainText('i')
+		await expect(nestedEms.first()).not.toContainText('x')
+		await expect(outerEm).toContainText('x')
+
+		// Step 3b: delete x, type second nested italic, then immediately type x — caret must land after second nested </em>
+		await page.keyboard.press('Backspace')
+		await editor.pressSequentially(' _i_')
+		await page.waitForTimeout(100)
+
+		await expect(outerEm).toBeVisible()
+		await expect(nestedEms).toHaveCount(2)
+
+		await editor.pressSequentially('x')
+
+		// x should be after second nested em but inside outer em
+		await expect(nestedEms.nth(1)).not.toContainText('x')
+		await expect(outerEm).toContainText('x')
+	})
 })

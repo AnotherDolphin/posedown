@@ -89,10 +89,15 @@
 - issue#82: smartReplaceChildren misses precise caret restore if: no pattern arg was provided but there's a pattern between a new delimiter and a span delimiter (spans get auto moved, but new delimiter offset identification is missed due to pattern arg absense) ❌
   > meaning: For `onInlineBreakingEdits`, all spans must be flattened and a match must be passed
 
+- issue: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the *
+
 #### findFirstMd regression
 
 - BUG-2: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation.
   > block level reparse after any new pattern needed
+  > partially addressed in `9922821fbc0e60bce327761584c319c9cf7d8ad0`
+
+- BUG-1: fixed with `findFirstMdMatchForTransform` --- may not be needed after data-delimiter is implemented because it would differentiate \* and \_ and cache them in input form
 
 #### Blocks
 

@@ -112,24 +112,25 @@ export const smartReplaceChildren = (
 		// Case D: Nodes are Different -> Replace
 
 		// Preserve focus mark spans from old node onto the new replacement
-		// const hasFocusSpans = [oldNode.firstChild, oldNode.lastChild].every(
-		// 	n => n?.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className === FOCUS_MARK_CLASS
-		// )
+		const hasFocusSpans = [oldNode.firstChild, oldNode.lastChild].every(
+			n => n?.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className === FOCUS_MARK_CLASS
+		)
 
-		// if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
-		// 	const openingSpan = oldNode.firstChild as HTMLElement
-		// 	const closingSpan = oldNode.lastChild as HTMLElement
+		if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
+			const openingSpan = oldNode.firstChild as HTMLElement
+			const closingSpan = oldNode.lastChild as HTMLElement
 
-		// 	;(newNode as HTMLElement).prepend(openingSpan)
-		// 	newNode.appendChild(closingSpan)
+			;(newNode as HTMLElement).prepend(openingSpan)
+			newNode.appendChild(closingSpan)
 
-		// 	// Add back the delimiter offset that was subtracted earlier
-		// 	offsetToCaret += delimiterOffsetDiff
-		// }
+			// Add back the delimiter offset that was subtracted earlier
+			// ISSUE+: we only need to add back the delimiter IF that is the one that belongs to the PATTERN
+			// that we subtracted the original delimiterOffsetDiff (i.e the new match itself)
+			offsetToCaret += delimiterOffsetDiff
+		}
 
 		parent.replaceChild(newNode, oldNode)
 
-		// ISSUE: if first newNode is LONGER than first oldNode, it may HAVE to steal the caret now 
 		// IF newNode.length >= offsetToCaret
 		if (!caretFound) {
 			const newLen = newNode.textContent?.length || 0

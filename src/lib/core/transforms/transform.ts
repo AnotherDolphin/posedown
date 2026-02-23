@@ -1,10 +1,11 @@
 import {
 	setCaretAtEnd,
 	getMainParentBlock,
-	findFirstMdMatch,
+	findFirstMdMatchForTransform,
 	isBlockPattern,
 	calculateCleanCursorOffset,
-	findFirstMarkdownMatch
+	findFirstMarkdownMatch,
+	findFirstMdMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone } from '../focus/utils'
@@ -46,9 +47,9 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Check for block patterns, with special handling for list patterns inside LIs
 	const hasBlockPattern = isBlockPattern(spanlessBlockClone.innerText, node)
+	// const hasInlinePattern = findFirstMdMatchForTransform(spanlessBlockClone.textContent || '')
 	const hasInlinePattern = findFirstMdMatch(spanlessBlockClone.textContent || '')
 	// const hasInlinePattern = findFirstMarkdownMatch(spanlessBlockClone.textContent || '')
-
 	const contentInMd = domToMarkdown(spanlessBlockClone)
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
@@ -92,7 +93,7 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 		if (blockFocusSpan) blockFocusSpan.remove()
 
 		// Pass pattern match info for accurate cursor positioning
-		// ISSUE: must unfocus to stop preservation on outdated focus spans
+		// ISSUE+: must unfocus to stop preservation on outdated focus spans
 		// the replacement fragment operates on a spanless block, but we pass whole block
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
 
