@@ -13,7 +13,7 @@ Tracks regressions, root-cause findings, and advice from replacing `findFirstMar
 
 **Run:** `npx playwright test tests/e2e/rich-editor-caret-position.spec.ts tests/e2e/rich-editor-inline-patterns.spec.ts`
 
-**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`). BUG-1 fixed via `findFirstMdMatchForTransform` at site 1.
+**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`). BUG-1 open — Option C (`findFirstMdMatchForTransform`) was reverted; `data-delimiter` is the correct fix direction.
 
 **Current:** ~49–52 passed / ~9–12 failed / 61 total *(flaky — results vary by run order, see flakiness note below)*
 
@@ -55,7 +55,7 @@ npx playwright test \
 
 | # | File | Function | Current state |
 |---|------|----------|---------------|
-| 1 | `src/lib/core/transforms/transform.ts:49` | `findAndTransform` — guard + inline transform | `findFirstMdMatchForTransform` (wrapper) |
+| 1 | `src/lib/core/transforms/transform.ts:49` | `findAndTransform` — guard + inline transform | `findFirstMdMatch` (Option C wrapper removed — see BUG-1) |
 | 2 | `src/lib/core/utils/dom.ts:446` | `processMarkdownInTextNodes` — paste only | `findFirstMdMatch` (new) |
 | 3 | `src/lib/core/utils/focus-mark-manager.ts:355` | `unwrapAndReparseInline` — cursor | `findFirstMdMatch` (new) |
 | 4 | `src/lib/core/utils/focus-mark-manager.ts:453` | `handleNestedPatterns` — cursor | `findFirstMarkdownMatch` (old) |
@@ -123,20 +123,24 @@ This was verified empirically with e2e tests:
 
 ## Confirmed Bugs
 
-### BUG-1 — `__bold__` creates `<em>` instead of `<strong>` ✅ FIXED
+### BUG-1 — `__bold__` creates `<em>` instead of `<strong>` ❌ OPEN
 
 At char 7 of `__bold__`, CommonMark parses `__bold_` as `_` + `<em>bold</em>`. The 8th `_`
 triggers `unwrapAndReparseInline` which serialises `<em>` as `*bold*` (ast-utils always uses
 `*`, never `_`). The round-trip fails due to the `**` vs `__` asymmetry above — reparse of
 `_*bold*_` produces another `<em>`, not `<strong>`.
 
-**Fix:** `findFirstMdMatchForTransform` wrapper at `inline-patterns.ts` — suppresses
-single-delimiter matches where `text[match.start - 1] === text[match.start]` (hallmark of
-an incomplete `__`/`**` sequence). Used at `transform.ts:49` (site 1) in place of the bare
-`findFirstMdMatch` call. Also suppresses `**bold*` intermediate (self-healing but now
-correctly blocked at source too).
+**Previously attempted fix (Option C) — deprecated and removed (2026-02-23):**
+`findFirstMdMatchForTransform` wrapper that suppressed single-delimiter matches where
+`text[match.start - 1] === text[match.start]`. Reverted because: (1) it is broader than
+needed — it also suppresses `*italic*` within `**italic*`, breaking reactivity for the
+self-healing `**bold**` path; (2) it does not solve the root fidelity problem — `rawMd` and
+focus marks still show `**bold**` even when the user typed `__bold__`, because the fix
+prevents the wrong element but cannot restore the lost delimiter identity. The correct fix is
+`data-delimiter` on the DOM element at transform time, read by `syncToTrees()` to produce
+faithful markdown. See Fix Strategy below.
 
-**Previously failing:** `caret:404` — **now passing**
+**Failing:** `caret:404`
 
 ### BUG-2 — Cursor jumps to parent end after nested inner-element transform
 
@@ -287,6 +291,35 @@ For `__bold_` → `_<em data-delimiter="_">bold</em>` → user types `_` → met
 **Revised verdict:** The clarified proposal is mechanically sounder than its first form, and the conceptual principle ("metadata over round-trip convention") is valid. But it requires cross-keystroke state in a codebase designed around stateless round-tripping, and every touchpoint (DOMPurify, reparse cycles, `smartReplaceChildren`, stale attr invalidation) is a new correctness invariant. Option C achieves identical user-visible results with none of that overhead.
 
 If the owner wants to pursue the `data-delimiter` approach as a **longer-term architectural direction** — and possibly use it to also show users their original delimiter syntax in focus marks — it should be scoped as its own design spike, not a hotfix for the current regressions.
+
+### Architectural correction — 2026-02-23
+
+The Conpus re-review's "stateless pipeline" and "wrong layer" objections were based on incomplete architectural context. The actual design:
+
+**Markdown is the source of truth. The DOM is an editable proxy.**
+
+- `rawMd` is the canonical state. `syncToTrees()` in `richEditorState.svelte.ts` is the canonical DOM→markdown sync — it always runs, debounced 500ms, calling `htmlToMarkdown(editableRef.innerHTML)`.
+- The markdown panel and DOM editor are always live and bi-directional. Users see and can export `rawMd` at all times.
+
+Given this, `data-delimiter` on DOM elements is **not** "adding state to a volatile layer." It is annotating the editable proxy with information that `syncToTrees` needs to produce faithful markdown. If `syncToTrees` reads `data-delimiter` when serializing, it can write `__bold__` to `rawMd` instead of `**bold**`. The DOM is the correct carrier for this data — it is exactly what `syncToTrees` reads from.
+
+**The "stateless pipeline" objection is partially wrong.** The pipeline functions (`htmlToMarkdown`, `reparse`, etc.) are stateless, but the DOM itself is stateful and is always the input to `syncToTrees`. Annotating DOM elements with delimiter metadata is consistent with how content state already works in this editor.
+
+**What remains valid from Conpus's objections:**
+
+1. **DOMPurify strips `data-*`.** Still true — `htmlToMarkdown` calls `DOMPurify.sanitize()` which removes `data-delimiter` before `rawMd` is updated. Fix: `ADD_ATTR: ['data-delimiter']` in the DOMPurify config. Single-line change, but it must be made deliberately.
+
+2. **Reparse cycles destroy the element.** Still true — `data-delimiter` must be re-attached after every `unwrapAndReparseInline` / `reparse` call. The delimiter is always available from `findFirstMdMatch` at those moments, but the re-attachment must be explicit.
+
+3. **Parallel transform path.** Still a concern if "bypass `domToMarkdown` and produce `<strong>` directly" is implemented. The alternative — let `syncToTrees` read `data-delimiter` and produce correct markdown, then re-render — avoids this entirely by staying on the single-path architecture.
+
+**Revised verdict on `data-delimiter`:**
+
+This is the **correct long-term direction for delimiter fidelity**, not just UX polish. The editor is markdown-first and users see `rawMd` in real time. Showing `**bold**` when the user typed `__bold__` is a visible fidelity bug in both the focus marks and the markdown panel. Option C (the suppression wrapper) fixes the wrong element type but does not fix fidelity — `rawMd` still shows `**` regardless.
+
+Both can coexist: Option C as an interim correctness fix, `data-delimiter` as the fidelity feature. But the team should treat Option C as incomplete, not done.
+
+**Option C scope correction:** The suppression wrapper is broader than needed. `**bold*` intermediate self-heals correctly — `domToMarkdown` on `*<em>bold</em>*` produces `**bold**` which re-parses as `<strong>`. Only `__bold_` does not self-heal (produces `_*bold*_` due to `emphasis: '*'` normalization). The suppression should target `_`-delimited single-emphasis only, not all single-delimiter emphasis — otherwise it suppresses a self-healing intermediate for `**bold**` that was previously working correctly.
 
 ---
 

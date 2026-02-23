@@ -32,6 +32,26 @@ FocusMarks temporarily reveals markdown syntax delimiters when the cursor enters
 - Edit `**` to `*` → transforms bold → italic
 - Edit `#` to `##` → transforms H1 → H2 (block editing)
 
+## Core Architecture Principle: Markdown as Source of Truth
+
+**Markdown is the source of truth. The DOM is a real-time, editable proxy of it.**
+
+- `rawMd` — the canonical markdown state, always in sync with the DOM
+- `syncToTrees()` — the canonical DOM→markdown sync in `richEditorState.svelte.ts`. Debounced 500ms. Calls `htmlToMarkdown(editableRef.innerHTML)` to update `rawMd` (and HAST for the side panel)
+- The markdown panel and DOM editor are always bi-directionally live — edits to either reflect in the other in real time; markdown is always exportable and copyable
+
+**Why this matters for the codebase:**
+
+Any data that needs to survive into the markdown representation must either:
+1. Be readable by `syncToTrees()` before or after DOMPurify runs, or
+2. Be stored in `rawMd` directly
+
+DOM attributes (`data-*`) are stripped by `DOMPurify.sanitize()` inside `htmlToMarkdown()`, which `syncToTrees()` calls. This means `data-delimiter` on DOM elements is silently lost before `rawMd` is updated — unless DOMPurify is configured with `ADD_ATTR: ['data-delimiter']`.
+
+**Delimiter fidelity implication:** Focus marks currently derive the display delimiter from `htmlToMarkdown(element)`, which normalizes everything to `*` via `emphasis: '*'` in `ast-utils`. A user who types `__bold__` sees `**bold**` in both the focus marks and the markdown panel. Fixing this requires either `data-delimiter` on DOM elements (with DOMPurify configured) or reading the delimiter from `rawMd` directly at the element's text offset.
+
+---
+
 ## Architecture
 
 See [focus-mark-manager.ts](../src/lib/core/utils/focus-mark-manager.ts) and [richEditorState.svelte.ts](../src/lib/svelte/richEditorState.svelte.ts)

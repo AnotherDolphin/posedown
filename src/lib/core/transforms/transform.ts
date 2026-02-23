@@ -1,10 +1,8 @@
 import {
 	setCaretAtEnd,
 	getMainParentBlock,
-	findFirstMdMatchForTransform,
 	isBlockPattern,
 	calculateCleanCursorOffset,
-	findFirstMarkdownMatch,
 	findFirstMdMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
@@ -47,9 +45,7 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Check for block patterns, with special handling for list patterns inside LIs
 	const hasBlockPattern = isBlockPattern(spanlessBlockClone.innerText, node)
-	// const hasInlinePattern = findFirstMdMatchForTransform(spanlessBlockClone.textContent || '')
 	const hasInlinePattern = findFirstMdMatch(spanlessBlockClone.textContent || '')
-	// const hasInlinePattern = findFirstMarkdownMatch(spanlessBlockClone.textContent || '')
 	const contentInMd = domToMarkdown(spanlessBlockClone)
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
