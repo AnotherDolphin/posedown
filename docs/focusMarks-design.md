@@ -1,6 +1,6 @@
 # FocusMarks - Design Documentation
 
-**Last Updated:** 2026-02-11
+**Last Updated:** 2026-02-23
 
 > **For current implementation status and test results**, see [focusMarks-status.md](./issues/focusMarks-status.md)
 
@@ -82,16 +82,20 @@ Focus Utilities (Extracted helpers in focus/utils.ts)
 ├── atEdgeOfFormatted() - Check if cursor at edge with formatted sibling
 ├── getSpanlessClone() - Clone element without focus mark spans
 ├── wouldFormValidDelimiter() - Validate inline delimiter upgrade
-└── wouldFormValidBlockDelimiter() - Validate block delimiter upgrade (NEW)
+└── wouldFormValidBlockDelimiter() - Validate block delimiter upgrade
 
 Block Patterns (block-patterns.ts)
 └── isSupportedBlockDelimiter() - Validate block delimiter strings
 
+Inline Patterns (inline-patterns.ts)
+├── findFirstMdMatch() - AST-based (CommonMark) primary pattern detection
+└── findFirstMdMatchForTransform() - Guard wrapper for per-keystroke use: suppresses premature single-delimiter emphasis matches mid-typing (e.g. __bold_ → no match until complete)
+
 DOM Utilities
 ├── dom.ts - Tag lists, tree walking, type guards
 ├── dom/util.ts - reparse(), getDomRangeFromContentOffsets(), getFirstTextNode()
-├── dom/smartReplaceChildren.ts - Smart DOM reconciliation with AUTO caret restoration
-└── selection.ts - setCaretAt() (now supports element nodes), setCaretAtEnd()
+├── dom/smartReplaceChildren.ts - Smart DOM reconciliation with auto caret restoration (offset-adjusted)
+└── selection.ts - setCaretAt() (supports element nodes), setCaretAtEnd()
 ```
 
 ### Data Flows
@@ -212,8 +216,34 @@ smartReplaceChildren() intelligently handles caret:
 **Breaking Delimiters:** Typing delimiter inside element breaks pattern and rematches
 - Example: `*italic*` + type `*` in middle → `*ita*lic*` → `<em>ita</em>lic*`
 - First pattern wins (markdown semantics)
+- Site 5 (`onInlineBreakingEdits` break-detection check) intentionally keeps `findFirstMarkdownMatch` — CommonMark is too strict for this substring heuristic
 
-### 5. Block Marks Editing
+### 5. Pattern Detection — `findFirstMdMatch` Migration
+
+**New function:** `findFirstMdMatch` (AST/CommonMark-based) replaces the old regex `findFirstMarkdownMatch` at most call sites for correctness (nested patterns, punctuation boundaries, underscore vs asterisk handling).
+
+**Call site decisions:**
+
+| Site | File | Function | Status |
+|------|------|----------|--------|
+| 1 | `transform.ts:49` | `findAndTransform` — per-keystroke | `findFirstMdMatchForTransform` (guard wrapper) |
+| 2 | `dom.ts:446` | `processMarkdownInTextNodes` — paste | `findFirstMdMatch` |
+| 3 | `focus-mark-manager.ts:355` | `unwrapAndReparseInline` | `findFirstMdMatch` |
+| 4 | `focus-mark-manager.ts:453` | `handleNestedPatterns` | `findFirstMdMatch` |
+| 5 | `focus-mark-manager.ts:490` | `onInlineBreakingEdits` break-detection | `findFirstMarkdownMatch` (intentional — keep) |
+
+**Site 1 guard (`findFirstMdMatchForTransform`):** Per-keystroke transforms run on every input. CommonMark correctly parses `__bold_` (7/8 chars) as `<em>` — a premature transform. The wrapper suppresses single-delimiter emphasis matches where the character before `match.start` equals the delimiter char, blocking the `__bold_` → `<em>` intermediate. ~10 lines, no other site touched.
+
+**Site 5 rationale:** The break-detection heuristic checks `matchWhole.text !== activeInline.textContent`. The old regex uses lazy `.+?` per pattern — `"**bo**ld**"` matches `"**bo**"` (a proper substring) and fires the break correctly. `findFirstMdMatch` would parse differently for edge cases like `"**bo*ld**"`. Old function's lazy-match behaviour is the correct semantics for this specific check.
+
+**Known regressions (open):**
+- BUG-2: Nested inner-element caret jumps to parent end
+- BUG-3: `***word***` outer `*` lost (intermediate `<em>` path)
+- BUG-4: `**_bold italic_**` blocked by `handleInlineMarkEdges` at `<em>` right edge
+
+See [findFirstMdMatch-regression-tracker.md](../findFirstMdMatch-regression-tracker.md) for full root-cause analysis.
+
+### 7. Block Marks Editing
 
 **Separate Architecture:** Block edits affect DOM structure (element type), not just content
 - `handleActiveBlock()` detects edits in `blockSpanRefs`
@@ -226,18 +256,11 @@ smartReplaceChildren() intelligently handles caret:
 - 🚧 Blockquotes: Display works, editing shows on separate line
 - 🚧 Lists: Display works, needs UX redesign
 
-### 6. Architecture Improvements (2026-02)
+### 8. Architecture Notes
 
-**Utility Extraction:** Pure functions moved to `focus/utils.ts` for better modularity
-- Delimiter extraction, span creation, edge detection, validation
-- Separation of concerns: stateful manager vs. pure functions
-- Easier testing and maintenance
+**Utility Extraction:** Pure functions in `focus/utils.ts`, stateful orchestration in `FocusMarkManager`. `block-patterns.ts` for block delimiter validation. `inline-patterns.ts` for pattern detection.
 
-**SmartReplace Auto Caret Restoration:** Eliminated fragile manual correction
-- Old: `setCaretAtEnd` hack, relied on stale selection state, asymmetric
-- New: `smartReplaceChildren` auto-restores based on text offset
-- `skipCaretCorrection` inferred from DOM (`activeInline.isConnected`), not selection
-- More robust, simpler, single source of truth
+**SmartReplace Auto Caret Restoration:** `smartReplaceChildren` auto-restores based on text offset; `skipCaretCorrection` removed — `activeInline.isConnected` inferred from DOM. Focus mark preservation in smartReplace is temporarily disabled.
 
 ## Technical Details
 
@@ -279,11 +302,13 @@ BLOCK_FORMATTED_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'LI']
 
 See implementations:
 - [richEditorState.svelte.ts](../src/lib/svelte/richEditorState.svelte.ts) - Integration layer
-- [focus-mark-manager.ts](../src/lib/core/utils/focus-mark-manager.ts) - Core orchestration logic (~800 lines)
-- [focus/utils.ts](../src/lib/core/focus/utils.ts) - **NEW** Extracted pure utilities (224 lines)
-- [block-patterns.ts](../src/lib/core/utils/block-patterns.ts) - **NEW** Block delimiter validation (50 lines)
+- [focus-mark-manager.ts](../src/lib/core/utils/focus-mark-manager.ts) - Core orchestration logic
+- [focus/utils.ts](../src/lib/core/focus/utils.ts) - Extracted pure utilities
+- [inline-patterns.ts](../src/lib/core/utils/inline-patterns.ts) - `findFirstMdMatch`, `findFirstMdMatchForTransform`
+- [block-patterns.ts](../src/lib/core/utils/block-patterns.ts) - Block delimiter validation
 - [dom/util.ts](../src/lib/core/dom/util.ts) - DOM utilities (reparse, cursor positioning)
-- [smartReplaceChildren.ts](../src/lib/core/dom/smartReplaceChildren.ts) - **Enhanced** Smart reconciliation with auto caret restoration
-- [selection.ts](../src/lib/core/utils/selection.ts) - **Enhanced** setCaretAt now supports element nodes
+- [smartReplaceChildren.ts](../src/lib/core/dom/smartReplaceChildren.ts) - Smart reconciliation with auto caret restoration
+- [selection.ts](../src/lib/core/utils/selection.ts) - `setCaretAt` (supports element nodes)
+- [findFirstMdMatch-regression-tracker.md](../docs/findFirstMdMatch-regression-tracker.md) - Pattern detection migration tracking
 - [block-transformation.spec.ts](../../tests/e2e/focus-marks/delimiter-editing/block-transformation.spec.ts) - Block type conversions (756 lines)
 - [TEST-INDEX.md](../../tests/e2e/focus-marks/TEST-INDEX.md) - Test organization by behavior categories
