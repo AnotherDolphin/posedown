@@ -158,7 +158,6 @@ export function extractMatches(
  * Find the first markdown pattern match in the text
  * Returns position, matched text, and delimiter length for inline replacement
  *
- * @deprecated Use {@link findFirstMdMatch} instead — it uses the CommonMark-compliant
  * mdast parser and matches the precedence rules of the AST pipeline.
  */
 export function findFirstMarkdownMatch(
@@ -183,6 +182,34 @@ export function findFirstMarkdownMatch(
 }
 
 type MatchResult = { start: number; end: number; text: string; patternName: string; delimiterLength: number }
+
+/**
+ * Wrapper around findFirstMdMatch for use at the transform site (site 1 — transform.ts).
+ * Suppresses premature matches caused by incomplete double-delimiter sequences typed
+ * character by character, e.g. "__bold_" (7th char of "__bold__").
+ *
+ * CommonMark correctly parses "__bold_" as text("_") + emphasis("_bold_"), but at the
+ * transform site this fires a premature <em> before the user finishes typing. Because
+ * ast-utils always serializes <em> as "*...*" (never "_..._"), the round-trip produces
+ * "_*bold*_" which can never recover to <strong>. Suppressing here prevents the breakage.
+ *
+ * Condition: single-delimiter match (delimiterLength === 1) whose opening char is
+ * immediately preceded by the same char — the hallmark of an incomplete "XX...X" sequence.
+ */
+export function findFirstMdMatchForTransform(text: string): MatchResult | null {
+	const match = findFirstMdMatch(text)
+	if (!match) return null
+
+	if (
+		match.delimiterLength === 1 &&
+		match.start > 0 &&
+		text[match.start - 1] === text[match.start]
+	) {
+		return null
+	}
+
+	return match
+}
 
 /**
  * CommonMark-compliant version of findFirstMarkdownMatch.

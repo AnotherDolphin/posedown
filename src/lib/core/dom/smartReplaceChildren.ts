@@ -124,13 +124,23 @@ export const smartReplaceChildren = (
 			newNode.appendChild(closingSpan)
 
 			// Add back the delimiter offset that was subtracted earlier
+			// ISSUE+: we only need to add back the delimiter IF that is the one that belongs to the PATTERN
+			// that we subtracted the original delimiterOffsetDiff (i.e the new match itself)
 			offsetToCaret += delimiterOffsetDiff
 		}
 
 		parent.replaceChild(newNode, oldNode)
 
+		// IF newNode.length >= offsetToCaret
 		if (!caretFound) {
-			offsetToCaret -= newNode.textContent?.length || 0
+			const newLen = newNode.textContent?.length || 0
+			if (offsetToCaret >= 0 && offsetToCaret <= newLen) {
+				// New node is longer than old and now contains the caret position
+				caretFound = true
+				caretRestored = tryRestoreCaret(newNode)
+			} else {
+				offsetToCaret -= newLen
+			}
 		} else if (!caretRestored) {
 			caretRestored = tryRestoreCaret(newNode)
 		}

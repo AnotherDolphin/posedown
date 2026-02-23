@@ -1,13 +1,14 @@
 import {
 	setCaretAtEnd,
 	getMainParentBlock,
-	findFirstMdMatch,
+	findFirstMdMatchForTransform,
 	isBlockPattern,
 	calculateCleanCursorOffset,
-	findFirstMarkdownMatch
+	findFirstMarkdownMatch,
+	findFirstMdMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
-import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS } from '../focus/utils'
+import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone } from '../focus/utils'
 import { domToMarkdown, markdownToDomFragment } from './ast-utils'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
@@ -42,17 +43,14 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
 	// This prevents focus mark spans from rematching as markdown syntax.
-	const cleanBlock = block.cloneNode(true) as HTMLElement
-	cleanBlock.querySelectorAll('.' + FOCUS_MARK_CLASS).forEach(mark => mark.remove())
-	cleanBlock.normalize() // Merge fragmented text nodes
+	const spanlessBlockClone = getSpanlessClone(block)
 
 	// Check for block patterns, with special handling for list patterns inside LIs
-	const hasBlockPattern = isBlockPattern(cleanBlock.innerText, node)
-	const hasInlinePattern = findFirstMdMatch(cleanBlock.textContent || '')
-	// const hasInlinePattern = findFirstMarkdownMatch(cleanBlock.textContent || '')
-	if (!hasBlockPattern && !hasInlinePattern) return null
-
-	const contentInMd = domToMarkdown(cleanBlock)
+	const hasBlockPattern = isBlockPattern(spanlessBlockClone.innerText, node)
+	// const hasInlinePattern = findFirstMdMatchForTransform(spanlessBlockClone.textContent || '')
+	const hasInlinePattern = findFirstMdMatch(spanlessBlockClone.textContent || '')
+	// const hasInlinePattern = findFirstMarkdownMatch(spanlessBlockClone.textContent || '')
+	const contentInMd = domToMarkdown(spanlessBlockClone)
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
 	// this will parse invalid markdown (e.g., "*text**") and automatically
@@ -60,7 +58,25 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Parse back to DOM
 	const { fragment, isInline } = markdownToDomFragment(contentInMd)
-	if (isOnlyWhiteSpaceDifference(block, fragment)) return null
+
+	const fragmentHtml = Array.from(fragment.childNodes)
+		.map(n => (n as HTMLElement).outerHTML || n.textContent)
+		.join('')
+	const blockHtml = spanlessBlockClone.innerHTML
+	const changed = blockHtml !== fragmentHtml
+	console.log(
+		`[transform] ${changed ? '⚡ DIFF' : '✓ SAME'}\n  block:    ${blockHtml}\n  fragment: ${fragmentHtml}`
+	)
+
+
+	if (isOnlyWhiteSpaceDifference(block, fragment)) {
+		console.log('yes only WS')
+		
+		return null
+	}
+
+	if (!hasBlockPattern && !hasInlinePattern) return null
+
 
 	const lastNodeInFragment = fragment.lastChild
 	if (!fragment || !lastNodeInFragment) return null
@@ -72,10 +88,13 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 		// state stale (blockSpanRefs[0] disconnected), which triggers unwrapAndReparseBlock
 		// on next input and incorrectly converts the block to a <p>.
 		const blockFocusSpan = block.firstElementChild?.classList?.contains(BLOCK_FOCUS_MARK_CLASS)
-			? block.firstElementChild : null
+			? block.firstElementChild
+			: null
 		if (blockFocusSpan) blockFocusSpan.remove()
 
 		// Pass pattern match info for accurate cursor positioning
+		// ISSUE+: must unfocus to stop preservation on outdated focus spans
+		// the replacement fragment operates on a spanless block, but we pass whole block
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
 
 		if (blockFocusSpan) block.prepend(blockFocusSpan)
