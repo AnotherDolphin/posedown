@@ -181,7 +181,7 @@ export function findFirstMarkdownMatch(
 	return null
 }
 
-type MatchResult = { start: number; end: number; text: string; patternName: string; delimiterLength: number }
+export type MatchResult = { start: number; end: number; text: string; patternName: string; delimiterLength: number }
 
 /**
  * CommonMark-compliant version of findFirstMarkdownMatch.

@@ -1,5 +1,6 @@
 import { FOCUS_MARK_CLASS } from '../focus/utils'
 import { setCaretAtEnd, setCaretAt } from '../utils/selection'
+import type { MatchResult } from '../utils'
 
 /**
  * Reconciles a parent element's children against a new fragment,
@@ -16,7 +17,7 @@ export const smartReplaceChildren = (
 	parent: HTMLElement,
 	newFragment: DocumentFragment | Node,
 	selection: Selection,
-	patternMatch?: { start: number; end: number; delimiterLength: number } | null
+	patternMatch?: MatchResult | null
 ) => {
 	const oldNodes = Array.from(parent.childNodes)
 	const newNodes = Array.from(newFragment.childNodes)
@@ -34,6 +35,9 @@ export const smartReplaceChildren = (
 		range.setEnd(anchorNode, selection.anchorOffset)
 		offsetToCaret = range.toString().length
 	}
+
+	// Store raw offset before delimiter subtraction (used later to guard add-back in Case D)
+	let rawOffsetToCaret = offsetToCaret
 
 	// Calculate removed delimiter offset if pattern matched
 	if (patternMatch && anchorNode && parent.contains(anchorNode)) {
@@ -117,16 +121,44 @@ export const smartReplaceChildren = (
 		)
 
 		if (caretInOldNode && hasFocusSpans && newNode.nodeType === Node.ELEMENT_NODE) {
+			
 			const openingSpan = oldNode.firstChild as HTMLElement
 			const closingSpan = oldNode.lastChild as HTMLElement
+			
+			// ISSUE+3: should NOT preserve outdated/repurposed spans
+			// must only move spans that are in total non-conflict with the new pattern
+			// new patterns may not have focus mark spans active for either ends
+			// if it matches with a pre-existing delimiter inside an outdated span
+			// FIX: Only migrate spans if the old node's full text matches the pattern's full text —
+			// this confirms these are exactly the spans for this match (not a same-delimiter node elsewhere)
+			const spansAreTheMatch = patternMatch && oldNode.textContent === patternMatch.text
 
-			;(newNode as HTMLElement).prepend(openingSpan)
-			newNode.appendChild(closingSpan)
-
-			// Add back the delimiter offset that was subtracted earlier
-			// ISSUE+: we only need to add back the delimiter IF that is the one that belongs to the PATTERN
-			// that we subtracted the original delimiterOffsetDiff (i.e the new match itself)
-			offsetToCaret += delimiterOffsetDiff
+			if (spansAreTheMatch) {
+				;(newNode as HTMLElement).prepend(openingSpan)
+				newNode.appendChild(closingSpan)
+			
+			// ISSUE+1 fix
+			// Only add back the delimiter offset if this node IS the pattern-match node —
+			// i.e. the caret's original (pre-subtraction) position was within the matched range.
+			// Without this guard, an adjacent focused node (not the new match) would incorrectly
+			// shift the caret by delimiterOffsetDiff.
+			// Nested inside spansAreTheMatch: offset only compensates for spans actually being re-injected.
+				// If spans were stale and skipped, no delimiter text is added → no offset correction needed.
+				if (rawOffsetToCaret >= patternMatch.start && rawOffsetToCaret <= patternMatch.end) {
+				offsetToCaret += delimiterOffsetDiff
+}
+			} else {
+				// Spans are stale — not migrated to newNode. The raw offsetToCaret was measured from
+				// the live DOM which included the old spans' delimiter text in its character count.
+				// Since those spans are ejected and won't exist in the new node, we must subtract
+				// oldSpanTotal to remove their contribution from the offset.
+				// However, delimiterOffsetDiff was already subtracted earlier (accounting for the new
+				// pattern's delimiter removal). That subtraction may overlap the same chars, so
+				// we add it back here to avoid double-counting: net = oldSpanTotal - delimiterOffsetDiff.
+				const oldSpanTotal =
+					(openingSpan.textContent?.length || 0) + (closingSpan.textContent?.length || 0)
+				offsetToCaret -= oldSpanTotal - delimiterOffsetDiff
+			}
 		}
 
 		parent.replaceChild(newNode, oldNode)
