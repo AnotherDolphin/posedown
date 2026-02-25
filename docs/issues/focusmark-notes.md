@@ -72,7 +72,7 @@
   > main issue lies in transform.ts call. The old had a `preventNesting` guard but the new one does natural premature transforms on \*\*bold\* to \**bold*
   > also, adding a final * trasform to **bold** correctly for asteriks, but fails for underscores because ast-utils can only back-track to asterisks on round conversions
 
-- issue#79: nested inline delmiiter inputs OR new transforms move caret to the end of (inline) parent esp. on more than one nested additions
+- issue#79: nested inline delmiiter inputs OR new transforms move caret to the end of (inline) parent esp. on more than one nested additions ✅ (issue+3 related)
 
 - issue#80: new findFirstMdMatch realtime updates causing comptability issues with `onInlineBreakingEdits` 
  fixed injectInlineMarks preservation logic, removed `skipCaretCorrection`, ~~and made `onInlineBreakingEdits` by also reparsing whole block~~ ✅
@@ -86,18 +86,20 @@
 - issue#81: mirroring leaves behind stray dels. Adding * to `**em*|` mirrors but leaves (doesn't consume) behind surrounding * (first char in this ex.) ⏳
   > implemented hasAdjacentDelimiterChar (to be revised)
 
-- issue#82: smartReplaceChildren misses precise caret restore if: no pattern arg was provided but there's a pattern between a new delimiter and a span delimiter (spans get auto moved, but new delimiter offset identification is missed due to pattern arg absense) ❌
-  > meaning: For `onInlineBreakingEdits`, all spans must be flattened and a match must be passed
+- issue#82: smartReplaceChildren misses precise caret restore if: no pattern arg was provided but there's a pattern between a new delimiter and a span delimiter (spans get auto moved, but new delimiter offset identification is missed due to pattern arg absense) ✅
+  > meaning: For `onInlineBreakingEdits`, all spans must be flattened and a match must be passed (?)
+  > fixed with spansAreTheMatch else bracket (stale span handling)
 
 - issue: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the *
 
-- issue: adding a breaking and earlier closing delimiter wrongly moves the caret back. i.e typing \* here: `*ok| ok*` places the caret after the first 'o' [issue+3]
+- issue+3: adding a breaking and earlier closing delimiter wrongly moves the caret back. i.e typing \* here: `*ok| ok*` places the caret after the first 'o' ✅
 
 #### findFirstMd regression
 
 - BUG-2: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation.
   > block level reparse after any new pattern needed
   > partially addressed in `9922821fbc0e60bce327761584c319c9cf7d8ad0`
+  > prob partially addressed in issue+3
 
 - BUG-1: fixed with `findFirstMdMatchForTransform` --- may not be needed after data-delimiter is implemented because it would differentiate \* and \_ and cache them in input form
 

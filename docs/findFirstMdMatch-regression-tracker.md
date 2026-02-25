@@ -3,8 +3,8 @@
 Tracks regressions, root-cause findings, and advice from replacing `findFirstMarkdownMatch`
 (regex-based) with `findFirstMdMatch` (CommonMark/mdast-based) across all call sites.
 
-**Last updated:** 2026-02-19
-**Branch:** merge-test
+**Last updated:** 2026-02-25
+**Branch:** main
 **Baseline commits:** `5de7ac0`, `3f291f8`, `7e6ac32`
 
 ---
@@ -13,39 +13,39 @@ Tracks regressions, root-cause findings, and advice from replacing `findFirstMar
 
 **Run:** `npx playwright test tests/e2e/rich-editor-caret-position.spec.ts tests/e2e/rich-editor-inline-patterns.spec.ts`
 
-**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`). BUG-1 fixed via `findFirstMdMatchForTransform` at site 1.
+**NOTE:** `onInlineBreakingEdits` is enabled (current state — `focus-mark-manager.ts:556` returns `true`). BUG-1 fixed via `findFirstMdMatchForTransform` at site 1. BUG-2 partially fixed by `spansAreTheMatch` guard in `smartReplaceChildren` (`caret:474` ✅, `inline:168` ✅). The same change introduced new regressions in caret-offset handling — see table below.
 
-**Current:** ~49–52 passed / ~9–12 failed / 61 total *(flaky — results vary by run order, see flakiness note below)*
+**Current:** 47 pass / 15 fail / 62 total *(2 additionally flaky: `caret:296`, `inline:244`)*
 
-| Test | Description | Bug |
-|------|-------------|-----|
-| `caret:117` | backspace after pattern transformation | flaky |
-| `caret:404` | `__bold__` → `<strong>` | BUG-1 |
-| `caret:431` | nested bold inside italic | BUG-2 |
-| `caret:474` | nested italic inside bold | BUG-2 |
-| `inline:168` | multiple italic inside bold | BUG-2 |
-| `inline:207` | multiple bold inside italic | BUG-2 |
-| `inline:244` | nested-looking patterns | flaky |
-| `inline:359` | `**_bold italic_**` → `<strong><em>` | BUG-4 |
-| `inline:374` | `_**italic bold**_` → `<em><strong>` | BUG-4 variant |
-| `inline:389` | `~~**deleted bold**~~` → `<del><strong>` | BUG-4 variant |
-| `inline:404` | `**~~bold deleted~~**` → `<strong><del>` | BUG-4 variant |
-| `inline:418` | `***~~text~~***` triple nesting | BUG-3 |
-| `inline:551` | `***bold italic phrase***` in middle | BUG-3 variant |
-| `inline:589` | `_**italic bold**_` at end | BUG-4 variant |
-| `inline:619` | `***word***` + immediate text | BUG-3 variant |
+| Test | Description | Status |
+|------|-------------|--------|
+| `caret:117` | backspace after pattern transformation | ❌ regression |
+| `caret:296` | multiple patterns, cursor at end | ⚠️ flaky |
+| `caret:362` | typing after pattern (no trailing space) | ❌ regression |
+| `caret:375` | navigate away and back | ❌ regression |
+| `caret:404` | `__bold__` → `<strong>` | ❌ BUG-1 |
+| `caret:431` | nested bold inside italic | ❌ BUG-2 |
+| `caret:517` | nested italic (underscore) inside italic (asterisk) | ❌ new/regression |
+| `inline:126` | mixed inline patterns | ❌ regression |
+| `inline:207` | multiple bold inside italic | ❌ BUG-2 |
+| `inline:244` | nested-looking patterns | ⚠️ flaky |
+| `inline:360` | `**_bold italic_**` → `<strong><em>` | ❌ BUG-4 |
+| `inline:375` | `_**italic bold**_` → `<em><strong>` | ❌ regression |
+| `inline:405` | `**~~bold deleted~~**` → `<strong><del>` | ❌ regression |
+| `inline:419` | `***~~text~~***` triple nesting | ❌ BUG-3 |
+| `inline:476` | PDN: `***word***` at start | ❌ regression |
+| `inline:590` | PDN: `_**italic bold**_` at end | ❌ regression |
+| `inline:620` | PDN: `***word***` + immediate text | ❌ regression |
 
-> **Flakiness note:** BUG-3/BUG-4 variant rows pass or fail depending on run order and system load. The stable confirmed failures are BUG-1 through BUG-4 (`:caret:404`, `caret:431`, `caret:474`, `inline:168`, `inline:207`, `inline:359`, `inline:418`).
+> **Regression note:** `caret:474` and `inline:168` (BUG-2) are now fixed. However, the `spansAreTheMatch` guard and its stale-span offset correction (`offsetToCaret -= oldSpanTotal - delimiterOffsetDiff`) introduced regressions across mixed-delimiter and multi-pattern caret tests. The 7 "regression" rows above were previously ✅. `caret:517` is a new test (not previously tracked) that also fails. Note: inline test line numbers shifted +1 from `:359` onward due to a new test inserted in that range.
 
 ```bash
 npx playwright test \
   "tests/e2e/rich-editor-caret-position.spec.ts:404" \
   "tests/e2e/rich-editor-caret-position.spec.ts:431" \
-  "tests/e2e/rich-editor-caret-position.spec.ts:474" \
-  "tests/e2e/rich-editor-inline-patterns.spec.ts:168" \
   "tests/e2e/rich-editor-inline-patterns.spec.ts:207" \
-  "tests/e2e/rich-editor-inline-patterns.spec.ts:359" \
-  "tests/e2e/rich-editor-inline-patterns.spec.ts:418" \
+  "tests/e2e/rich-editor-inline-patterns.spec.ts:360" \
+  "tests/e2e/rich-editor-inline-patterns.spec.ts:419" \
   --reporter=list
 ```
 
@@ -145,7 +145,13 @@ calls `setCaretAtEnd` on the new inner `<strong>`, which resolves to the end of 
 `<em>` because `getLastTextDescendant` descends into the last child recursively. The inner
 `<strong>` ends up placed outside `<em>` in the final DOM.
 
-**Failing tests:** `caret:431`, `caret:474`, `inline:168`, `inline:207`
+**Partial fix (2026-02-25):** `spansAreTheMatch` guard in `smartReplaceChildren` — focus spans
+are only migrated to a reconciled new node when `oldNode.textContent === patternMatch.text`,
+preventing repurposed spans from a prior outer pattern being injected into a new inner-pattern
+node. Fixes `caret:474` and `inline:168`. The stale-span offset correction introduced alongside
+this guard caused regressions in other tests; `caret:431` and `inline:207` still open.
+
+**Still failing:** `caret:431`, `inline:207`
 
 ### BUG-3 — `***word***` / `***~~text~~***` lose outer `*`
 
@@ -294,7 +300,7 @@ If the owner wants to pursue the `data-delimiter` approach as a **longer-term ar
 
 ### `rich-editor-caret-position.spec.ts`
 
-23 pass / 3 fail (+ `:78` and `:296` flaky in suite)
+21 pass / 5 fail (+ `:296` flaky; new test `:517` failing)
 
 | Line | Description | Status |
 |------|-------------|--------|
@@ -302,11 +308,11 @@ If the owner wants to pursue the `data-delimiter` approach as a **longer-term ar
 | `:36` | pattern with text before it | ✅ |
 | `:52` | pattern + space + text | ✅ |
 | `:65` | pattern in middle of text | ✅ |
-| `:78` | `***nested***` caret position | ⚠️ flaky (BUG-3 in suite) |
-| `:94` | multiple patterns in sequence | ✅ |
-| `:117` | backspace after pattern | ✅ |
+| `:78` | `***nested***` caret position | ✅ |
+| `:95` | multiple patterns in sequence | ✅ |
+| `:117` | backspace after pattern | ❌ regression |
 | `:132` | space after pattern stays outside | ✅ |
-| `:156` | rapid typing after pattern | ✅ |
+| `:154` | rapid typing after pattern | ✅ |
 | `:166` | mixed patterns preserved | ✅ |
 | `:186` | pattern at start of line | ✅ |
 | `:197` | pattern at end of line | ✅ |
@@ -318,16 +324,17 @@ If the owner wants to pursue the `data-delimiter` approach as a **longer-term ar
 | `:313` | pattern with punctuation before it | ✅ |
 | `:327` | pattern at very start of block | ✅ |
 | `:342` | long text, pattern in middle | ✅ |
-| `:362` | typing after pattern (no trailing space) | ✅ |
-| `:375` | navigate away and back | ✅ |
+| `:362` | typing after pattern (no trailing space) | ❌ regression |
+| `:375` | navigate away and back | ❌ regression |
 | `:418` | single underscore italic `_italic_` | ✅ |
 | `:404` | `__bold__` → `<strong>` | ❌ BUG-1 |
 | `:431` | nested bold inside italic | ❌ BUG-2 |
-| `:474` | nested italic inside bold | ❌ BUG-2 |
+| `:474` | nested italic inside bold | ✅ *(was BUG-2, fixed)* |
+| `:517` | nested italic (underscore) inside italic (asterisk) | ❌ new/regression |
 
 ### `rich-editor-inline-patterns.spec.ts`
 
-26 pass / 4 fail. Six tests previously mis-listed as failures (`:373`, `:387`, `:401`, `:518`, `:568`, `:613`) were state-contamination artefacts; user confirmed all pass with `// review: passes` comments.
+26 pass / 10 fail (+ `:244` flaky). Note: line numbers shifted +1 from `:360` onward due to a test inserted in that range.
 
 | Line | Description | Status |
 |------|-------------|--------|
@@ -338,34 +345,34 @@ If the owner wants to pursue the `data-delimiter` approach as a **longer-term ar
 | `:65` | prevent typing inside styled element | ✅ |
 | `:86` | space after styled element stays outside | ✅ |
 | `:107` | multiple chars after styled element | ✅ |
-| `:126` | mixed inline patterns | ✅ |
+| `:126` | mixed inline patterns | ❌ regression |
 | `:143` | prevent deletion of last `<p>` | ✅ |
-| `:168` | multiple italic inside bold | ❌ BUG-2 |
+| `:168` | multiple italic inside bold | ✅ *(was BUG-2, fixed)* |
 | `:207` | multiple bold inside italic | ❌ BUG-2 |
-| `:244` | `**bold *italic* text**` nested | ✅ |
+| `:244` | `**bold *italic* text**` nested | ⚠️ flaky |
 | `:259` | whitespace break-spaces CSS | ✅ |
 | `:269` | rapid typing after conversion | ✅ |
 | `:285` | space-only text node continuation | ✅ |
 | `:304` | Delete key `<p>` protection | ✅ |
 | `:325` | cursor position after conversion | ✅ |
 | `:343` | `***bold italic***` → `<em><strong>` | ✅ |
-| `:359` | `**_bold italic_**` → `<strong><em>` | ❌ BUG-4 |
-| `:374` | `_**italic bold**_` → `<em><strong>` | ✅ |
-| `:389` | `~~**deleted bold**~~` → `<del><strong>` | ✅ |
-| `:404` | `**~~bold deleted~~**` → `<strong><del>` | ✅ |
-| `:418` | triple nesting `***~~text~~***` | ❌ BUG-3 |
-| `:434` | prevent typing inside nested after conversion | ✅ |
-| `:457` | complex nested with text around | ✅ |
-| `:475` | PDN: `***word***` at start | ✅ |
-| `:489` | PDN: `text ***word***` at end | ✅ |
-| `:504` | PDN: `before ***word***` in middle | ✅ |
-| `:522` | PDN: `***bold italic phrase***` at start | ✅ |
-| `:536` | PDN: `start ***bold italic phrase***` at end | ✅ |
-| `:551` | PDN: phrase in middle | ✅ |
-| `:573` | PDN: `**_text_**` at start | ✅ |
-| `:589` | PDN: `start _**italic bold**_` at end | ✅ |
-| `:604` | PDN: single char `***x***` | ✅ |
-| `:619` | PDN: `***word***` + immediate text | ✅ |
+| `:360` | `**_bold italic_**` → `<strong><em>` | ❌ BUG-4 |
+| `:375` | `_**italic bold**_` → `<em><strong>` | ❌ regression |
+| `:390` | `~~**deleted bold**~~` → `<del><strong>` | ✅ |
+| `:405` | `**~~bold deleted~~**` → `<strong><del>` | ❌ regression |
+| `:419` | triple nesting `***~~text~~***` | ❌ BUG-3 |
+| `:435` | prevent typing inside nested after conversion | ✅ |
+| `:458` | complex nested with text around | ✅ |
+| `:476` | PDN: `***word***` at start | ❌ regression |
+| `:490` | PDN: `text ***word***` at end | ✅ |
+| `:505` | PDN: `before ***word***` in middle | ✅ |
+| `:523` | PDN: `***bold italic phrase***` at start | ✅ |
+| `:537` | PDN: `start ***bold italic phrase***` at end | ✅ |
+| `:552` | PDN: phrase in middle | ✅ |
+| `:574` | PDN: `**_text_**` at start | ✅ |
+| `:590` | PDN: `start _**italic bold**_` at end | ❌ regression |
+| `:605` | PDN: single char `***x***` | ✅ |
+| `:620` | PDN: `***word***` + immediate text | ❌ regression |
 
 ### `focus-marks/delimiter-editing/breaking-delimiters.spec.ts`
 
