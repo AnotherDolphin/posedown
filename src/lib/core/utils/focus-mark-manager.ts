@@ -649,7 +649,7 @@ export class FocusMarkManager {
 	public handleInlineMarkEdges(selection: Selection, typedChar: string): boolean {
 		const edge = this.isAtInlineMarkEdge(selection)
 		if (!edge) return false
-
+		debugger
 		const { position, target } = edge
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = target === 'open' ? startSpan : endSpan
@@ -659,6 +659,16 @@ export class FocusMarkManager {
 			typedChar,
 			SUPPORTED_INLINE_DELIMITERS
 		)
+
+		// before open is usually safe to skip bc brower focuses node before caret; but this assumes this not the firstChild
+		// issue#84 fix: if bofre open BUT still inside span (prob means it is firstChild)
+		if (position == 'before' && target == 'open' && edge.caretInSpan) {
+			// insert into precedeing text node
+			const textNode = document.createTextNode(typedChar)
+			startSpan.parentElement!.before(textNode)
+			setCaretAt(textNode, typedChar.length)
+			return true
+		}
 
 		// Special case: after opening span with invalid delimiter → insert into content
 		if (position === 'after' && target === 'open' && !validDelimiter) {

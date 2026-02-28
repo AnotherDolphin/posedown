@@ -557,4 +557,31 @@ test.describe('Rich Editor - Caret Position After Transformations', () => {
 		await expect(nestedEms.nth(1)).not.toContainText('x')
 		await expect(outerEm).toContainText('x')
 	})
+
+	// issue#84: caret jumped 2 steps after space at |*text* — space went into startSpan,
+	// checkAndMirrorSpans triggered reparse, caret ended up inside em instead of before it.
+	test('caret is 1 step forward after space at start of focused italic (issue#84)', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+		await editor.pressSequentially('*text*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		await em.click()
+		await page.waitForTimeout(50)
+		await page.keyboard.press('Home')
+		await page.keyboard.press('Space')
+		await page.waitForTimeout(100)
+
+		// marker char — must land before em (1 step forward from Home), not 2 steps inside it
+		await page.keyboard.type('X')
+		await page.waitForTimeout(50)
+
+		// focus marks make em.textContent() = "*text*", so assert via locator
+		await expect(em).not.toContainText('X') // X must be outside em
+
+		const fullText = await editor.textContent()
+		expect(fullText).toMatch(/ X\*?text\*?/) // space, then X, then italic content with optional * delimiters
+	})
 })

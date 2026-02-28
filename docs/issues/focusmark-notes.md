@@ -97,7 +97,8 @@
 - issue#83: subsequent delimiters are ignored even if they could match a larger pattern because clean clones are used to process matches and/or spans are not counted because they're unfocused
   > major strategy is needed to flaten then compare then transform only if structure changes.
 
-- issue#84: space input at start of block and before a focused formatted element mishaves `|*text*`
+- issue#84: space input at start of block and before a focused formatted element mishaves `|*text*` ✅
+  > handleInlineMarkEdges has no escape for position='before' + non-delimiter (this is cus browser normally anchors node that preceeds caret; but it assumed there is one)
 
 #### findFirstMd regression
 

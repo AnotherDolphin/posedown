@@ -553,4 +553,29 @@ test.describe('onInlineBreakingEdits — input-time detection', () => {
 		const strongCount = await editor.locator('strong').count()
 		expect(strongCount).toBe(1)
 	})
+
+	// issue#84: space at |*text* — no preceding text node, browser placed caret inside startSpan,
+	// space went into the span, checkAndMirrorSpans triggered reparse and swallowed the space.
+	test('space before focused italic (issue#84) registers and is not swallowed', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+		await editor.pressSequentially('*text*')
+		await page.waitForTimeout(100)
+
+		const em = editor.locator('em')
+		await expect(em).toBeVisible()
+
+		await em.click()
+		await page.waitForTimeout(50)
+		await page.keyboard.press('Home')
+		await page.keyboard.press('Space')
+		await page.waitForTimeout(100)
+
+		// em survives, space appears before it (not swallowed by reparse)
+		await expect(em).toBeVisible()
+		const emText = await em.textContent()
+		expect(emText).toContain('text')
+
+		const blockText = await editor.locator('p').first().textContent()
+		expect(blockText).toMatch(/^ /) // leading space present
+	})
 })
