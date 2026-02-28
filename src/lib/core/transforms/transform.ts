@@ -10,6 +10,7 @@ import {
 import { smartReplaceChildren } from '../dom'
 import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone, removeFocusMarkSpans } from '../focus/utils'
 import { domToMarkdown, markdownToDomFragment } from './ast-utils'
+import { hasFormattedNodeChanges } from './checkers'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
 
@@ -41,6 +42,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	let block = getMainParentBlock(node, editableRef)
 	if (!block) return null
 
+
+
 	// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
 	// This prevents focus mark spans from rematching as markdown syntax.
 	const spanlessBlockClone = getSpanlessClone(block)
@@ -51,6 +54,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	const hasInlinePattern = findFirstMdMatch(spanlessBlockClone.textContent || '')
 	// const hasInlinePattern = findFirstMarkdownMatch(spanlessBlockClone.textContent || '')
 	const contentInMd = domToMarkdown(spanlessBlockClone)
+	console.log(contentInMd)
+	
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
 	// this will parse invalid markdown (e.g., "*text**") and automatically
@@ -59,24 +64,25 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// Parse back to DOM
 	const { fragment, isInline } = markdownToDomFragment(contentInMd)
 
-	const fragmentHtml = Array.from(fragment.childNodes)
-		.map(n => (n as HTMLElement).outerHTML || n.textContent)
-		.join('')
-	const blockHtml = spanlessBlockClone.innerHTML
-	const changed = blockHtml !== fragmentHtml
-	console.log(
-		`[transform] ${changed ? '⚡ DIFF' : '✓ SAME'}\n  block:    ${blockHtml}\n  fragment: ${fragmentHtml}`
-	)
+	// const fragmentHtml = Array.from(fragment.childNodes)
+	// 	.map(n => (n as HTMLElement).outerHTML || n.textContent)
+	// 	.join('')
+	// const blockHtml = spanlessBlockClone.innerHTML
+	// const changed = blockHtml !== fragmentHtml
+	// console.log(
+	// 	`[transform] ${changed ? '⚡ DIFF' : '✓ SAME'}\n  block:    ${blockHtml}\n  fragment: ${fragmentHtml}`
+	// )
+	console.log('chaged', hasFormattedNodeChanges(spanlessBlockClone, fragment))
+	
 
 
-	if (isOnlyWhiteSpaceDifference(block, fragment)) {
+	if (!hasFormattedNodeChanges(block, fragment)) {
 		console.log('yes only WS')
-		
+			
 		return null
 	}
 
 	if (!hasBlockPattern && !hasInlinePattern) return null
-
 
 	const lastNodeInFragment = fragment.lastChild
 	if (!fragment || !lastNodeInFragment) return null
@@ -108,26 +114,4 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 		block.replaceWith(fragment)
 		return { caretOffset, newBlock }
 	}
-}
-
-const isOnlyWhiteSpaceDifference = (element: Node, fragment: Node | DocumentFragment) => {
-	const oldContent = element instanceof HTMLElement ? element.innerHTML : element.textContent
-	// Extract content from fragment
-	let newContent: string | null
-	if (fragment instanceof DocumentFragment) {
-		const tempDiv = document.createElement('div')
-		tempDiv.appendChild(fragment.cloneNode(true))
-		newContent = tempDiv.innerHTML
-	} else if (fragment instanceof HTMLElement) {
-		newContent = fragment.innerHTML
-	} else {
-		newContent = fragment.textContent
-	}
-
-	// Compare after normalizing whitespace
-	const normalizeWhitespace = (str: string | null) => {
-		return str?.replace(/\s+/g, ' ').trim() || ''
-	}
-
-	return normalizeWhitespace(oldContent) === normalizeWhitespace(newContent)
 }

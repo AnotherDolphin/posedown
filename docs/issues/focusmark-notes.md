@@ -94,6 +94,11 @@
 
 - issue+3: adding a breaking and earlier closing delimiter wrongly moves the caret back. i.e typing \* here: `*ok| ok*` places the caret after the first 'o' ✅
 
+- issue#83: subsequent delimiters are ignored even if they could match a larger pattern because clean clones are used to process matches and/or spans are not counted because they're unfocused
+  > major strategy is needed to flaten then compare then transform only if structure changes.
+
+- issue#84: space input at start of block and before a focused formatted element mishaves `|*text*`
+
 #### findFirstMd regression
 
 - BUG-2: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation.
