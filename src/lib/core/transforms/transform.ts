@@ -87,6 +87,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	const lastNodeInFragment = fragment.lastChild
 	if (!fragment || !lastNodeInFragment) return null
 
+	const caretOffset = calculateCleanCursorOffset(block, selection)
+
 	// Swap DOM and restore cursor using smartReplaceChildren
 	if (isInline) {
 		// Preserve block focus span across inline replacement.
@@ -107,11 +109,12 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 		if (blockFocusSpan) block.prepend(blockFocusSpan)
 
-		return {}
+		// issue#86 fix: return original caret offset to allow onInput to restore to exact pos after focus/reinject spans
+		return { caretOffset, block }
 	} else {
-		const caretOffset = calculateCleanCursorOffset(block, selection)
 		const newBlock = fragment.firstChild as Element
 		block.replaceWith(fragment)
-		return { caretOffset, newBlock }
+		setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
+		return { caretOffset, block: newBlock }
 	}
 }

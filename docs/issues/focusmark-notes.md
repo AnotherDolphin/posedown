@@ -101,7 +101,12 @@
 - issue#85: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation. ✅
   > added `findAndTransform` to the end of `unwrapandReparseInline` to catch outer patterns
 
-- issue#86: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the *
+- issue#86: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the * ✅
+
+- issue#86.1: holistic #86 fix still allows `onInlineBreakingPatterns` to false place caret to before new open span
+  > onInlineBreakingEdits => unwrapAndReparseInline doesn't have the mechanism of onInput => findAndTransform => restore returned clean caret offset
+  > if onInlineBreakingEdits is disabled, the flow down to findAndTransform doesn't detect a new md pattern with `*old *|new*` because it removes spans before parsing. New should now be `*new*` and the first \* becomes unamtched.
+  > findFirstMarkdownMatch doesn't trigger the pattern mentioned above because it prios first and nearest occurence matches (anti-pattern to utils) i.e. matches `*old *` instead of `*new*`
 
 #### findFirstMd regression
 

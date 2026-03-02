@@ -171,11 +171,10 @@ export class RichEditorState {
 		// future: optimize to only check current node for new marks instead of checking whole block		
 		const transformResult = findAndTransform(this.editableRef)
 		if (transformResult) {
-			const { caretOffset, newBlock } = transformResult
-			if (newBlock && caretOffset !== undefined) {
-				setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
+			const { caretOffset, block } = transformResult
+			if (block && caretOffset !== undefined) {
 				this.focusMarkManager.refocus(selection, this.editableRef)
-				setCaretAt(newBlock, caretOffset)
+				setCaretAt(block, Math.min(block.textContent.length, caretOffset))
 			}
 
 			// Prevent FocusMarks from appearing on the just-transformed element
