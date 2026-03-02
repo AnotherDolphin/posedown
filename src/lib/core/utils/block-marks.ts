@@ -1,5 +1,6 @@
 import { markdownToHtml, stringifyMdastToMarkdown } from '../transforms/ast-utils'
 import { defaultHandlers, toHast, type Handler } from 'mdast-util-to-hast'
+import type { List } from 'mdast'
 import { getMainParentBlock, insertAfter } from './dom'
 
 /**
@@ -23,7 +24,34 @@ export const isBlockTagName = (tagName: string): tagName is (typeof BLOCK_TAG_NA
 	return (BLOCK_TAG_NAMES as readonly string[]).includes(tagName)
 }
 
-// mdast to hast node handler for H
+/**
+ * Custom mdast-to-hast handler for list nodes. Suppresses list rendering only
+ * for a bare marker character (e.g. `*` or `-` with no trailing space), returning
+ * a plain `<p>` instead. A bare marker and `* ` both produce an empty listItem
+ * structurally, so the source position is used to distinguish them: a bare marker
+ * spans 1 column, while `* ` (user intending a list) spans ≥2 columns. For all
+ * other inputs it delegates to the standard list handler unchanged.
+ */
+export const listHandler: Handler = (state, node) => {
+	const firstItem = (node as List).children[0]
+	// A bare `*` and `* ` both produce an empty listItem structurally, so use
+	// the source position to distinguish them: a bare marker spans 1 column,
+	// while `* ` (user intending a list) spans ≥2 columns.
+	const sourceColumns = (node.position?.end.column ?? 2) - (node.position?.start.column ?? 0)
+	const isBareMarker = (!firstItem || firstItem.children.length === 0) && sourceColumns < 2
+	if (isBareMarker) {
+		const rawMd = stringifyMdastToMarkdown(node).trim()
+		return {
+			type: 'element',
+			tagName: 'p',
+			properties: {},
+			children: [{ type: 'text', value: rawMd }]
+		}
+	}
+	return defaultHandlers.list(state, node)
+}
+
+// Custom mdast-to-hast handler: extends by attaching original raw md as a data-raw-md att
 export const headingHandler: Handler = (state, node) => {
 	// Call default handler
 	const result = defaultHandlers.heading(state, node)

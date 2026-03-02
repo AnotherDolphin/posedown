@@ -12,7 +12,7 @@ import type { RootContent as MdastContent, Nodes as MdastNodes, Delete } from 'm
 import type { Nodes as HastNodes, RootContent as HastRootContent } from 'hast'
 import { toDom } from 'hast-util-to-dom'
 import { remove } from 'unist-util-remove'
-import { headingHandler, ensureBlockHeight } from '../utils/block-marks'
+import { headingHandler, listHandler, ensureBlockHeight } from '../utils/block-marks'
 import DOMPurify from 'dompurify'
 import { extractPatternPrefix } from '../utils/block-patterns'
 
@@ -69,7 +69,8 @@ export const markdownToHast = (markdown: string) => {
 	const mdast = parseMarkdownToMdast(markdown)
 	const hast = toHast(mdast, {
 		handlers: {
-			heading: headingHandler
+			heading: headingHandler,
+			list: listHandler
 		}
 	})
 	removeEmptySeparators(hast)
