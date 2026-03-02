@@ -241,6 +241,38 @@ test.describe('Rich Editor - Inline Markdown Patterns', () => {
 		await expect(bolds.nth(1)).toContainText('b')
 	})
 
+	test('should maintain parent em when child em is created inside it (issue#85)', async ({ page }) => {
+		const editor = page.locator('[role="article"][contenteditable="true"]')
+
+		await editor.click()
+
+		// Step 1: create parent italic (em) with two spaces as a slot for the child content
+		await editor.pressSequentially('*outer  em*')
+		await page.waitForTimeout(100)
+
+		const outerEm = editor.locator('p > em')
+		await expect(outerEm).toBeVisible()
+
+		// Step 2: click inside em, navigate past opening * (1) and "outer " (6) to land between the two spaces
+		await outerEm.click()
+		await page.waitForTimeout(50)
+		await page.keyboard.press('Home')
+		for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight') // 1 for *, 5 for "outer"
+
+		// Step 3: type the child italic pattern — triggers em-inside-em creation (issue#85)
+		await editor.pressSequentially(' *inner em*')
+		await page.waitForTimeout(100)
+
+		// Expected structure: <p><em>outer <em>inner em</em> em</em></p>
+		// Parent em must survive as an em (not be mutated or dropped)
+		const innerEm = outerEm.locator('em')
+		await expect(innerEm).toContainText('inner em')
+		await expect(outerEm).toContainText('outer')
+
+		const innerHTML = await editor.innerHTML()
+		expect(innerHTML).toMatch(/<em>outer .*?<em>.*?inner em.*?<\/em> em<\/em>/s)
+	})
+
 	test('should handle nested-looking patterns correctly', async ({ page }) => {
 		const editor = page.locator('[role="article"][contenteditable="true"]')
 

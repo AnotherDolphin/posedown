@@ -90,8 +90,6 @@
   > meaning: For `onInlineBreakingEdits`, all spans must be flattened and a match must be passed (?)
   > fixed with spansAreTheMatch else bracket (stale span handling)
 
-- issue: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the *
-
 - issue+3: adding a breaking and earlier closing delimiter wrongly moves the caret back. i.e typing \* here: `*ok| ok*` places the caret after the first 'o' ✅
 
 - issue#83: subsequent delimiters are ignored even if they could match a larger pattern because clean clones are used to process matches and/or spans are not counted because they're unfocused
@@ -100,9 +98,14 @@
 - issue#84: space input at start of block and before a focused formatted element mishaves `|*text*` ✅
   > handleInlineMarkEdges has no escape for position='before' + non-delimiter (this is cus browser normally anchors node that preceeds caret; but it assumed there is one)
 
+- issue#85: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation. ✅
+  > added `findAndTransform` to the end of `unwrapandReparseInline` to catch outer patterns
+
+- issue#86: correct to end issue needs revist, adding an opening * to create a new pattern moves the caret before the *
+
 #### findFirstMd regression
 
-- BUG-2: new pattern that takes focus from outer focus-span-bearing patterns can miss on new outer patterns due to delimiter reallocation.
+- BUG-2: [current blockage]: issue+4
   > block level reparse after any new pattern needed
   > partially addressed in `9922821fbc0e60bce327761584c319c9cf7d8ad0`
   > prob partially addressed in issue+3
@@ -153,3 +156,46 @@ see [focusmark-test-results](./focusmark-test-results.md)
 ## 🧱s
 
 - typing a rogue delimiter like "**bold`*|` and *italic***" causes unexpected commonmark spec [behavior](./commonmark-breaking-spec.md)
+
+## BUG-2 cali verbose
+
+ BUG-2: Caret lands inside the closing focus span after a nested transform
+
+  Scenario: User types *italic text* → <em>, then navigates inside and types **b**.
+
+  What should happen
+
+  After **b** transforms, the caret should sit after <strong>, inside <em>, so the next typed character lands there:
+  <em>italic <strong>b</strong>|text</em>
+
+  What actually happens — step by step
+
+  1. findAndTransform fires correctly.
+  smartReplaceChildren reconciles <em>italic **b**text</em> → <em>italic <strong>b</strong>text</em>. It calculates
+  adjusted offset = 8 and calls setCaretAt(<em>, 8), which places the caret at the end of the b text node inside
+  <strong>. Caret is correct at this point.
+
+  2. handleSelectionChange fires.
+  findFocusedInline returns <strong> (caret is inside it). this.activeInline was the old (now disconnected) <em>, so a
+  transition fires → injectInlineMarks(<strong>).
+
+  3. injectInlineMarks calls setCaretAtEnd(<strong>) with atEnd=true.
+  Before calling, it appends the closing <span class="pd-focus-mark">**</span> to <strong>. The structure is now:
+  <strong><span>**</span>b<span>**</span></strong>
+                                ↑ lastChild
+  getLastTextDescendant(<strong>) unconditionally recurses into lastChild — the closing span — then into its text "**".
+  So the caret lands inside "**", not after <strong>.
+
+  The culprit is this commented-out guard in selection.ts:19-21:
+  // &&
+  // CONTAINER_ONLY_TAGS.includes((node as Element).tagName as any)
+  Without it, getLastTextDescendant descends into any element's last child, including focus spans.
+
+  4. User types x — goes into the closing focus span.
+  ** becomes **x. handleSpanEdit fires → checkAndMirrorSpans mirrors **x to the opening span → unwrapAndReparseInline is
+   triggered. The reparse serializes the corrupted <strong> and rebuilds the whole block. The "text" suffix after
+  <strong> inside <em> is lost (or <em> collapses) during the rebuild.
+
+  Result: <em> ends up containing only "italic b" — the "text" part is gone, and x is missing from <em> entirely. The
+  second **b** (in inline:207) fails the same way: after the first inner bold is transformed, the caret goes into the
+  wrong place and the second bold either misfires or lands outside <em>.

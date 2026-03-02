@@ -384,6 +384,7 @@ export class FocusMarkManager {
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		this.editableRef && this.refocus(selection, this.editableRef)
+		findAndTransform(this.editableRef!) // catch new outer patterns if needed (issue#85)
 
 		return true
 	}
@@ -649,7 +650,7 @@ export class FocusMarkManager {
 	public handleInlineMarkEdges(selection: Selection, typedChar: string): boolean {
 		const edge = this.isAtInlineMarkEdge(selection)
 		if (!edge) return false
-		debugger
+
 		const { position, target } = edge
 		const [startSpan, endSpan] = this.inlineSpanRefs
 		const targetSpan = target === 'open' ? startSpan : endSpan
