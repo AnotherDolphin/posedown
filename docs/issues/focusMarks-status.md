@@ -1,32 +1,37 @@
 # FocusMarks - Current Status
 
-**Last Updated:** 2026-02-23
-**Latest Commit:** `findFirstMdMatchForTransform` added as BUG-1 fix; smartReplace caret restore improvements; open regressions tracked in BUG-2/3/4
+**Last Updated:** 2026-03-03
+**Latest Commit:** `onInlineBreakingEdits` disabled checkpoint (issue#86.2 WIP); issue#84 + #85 fixed; caret offset restore in `findAndTransform` (issue#86); BUG-1/2/3/4 moved to `test.fixme`
 
 > **For architecture, design decisions, and how it works**, see [../focusMarks-design.md](../focusMarks-design.md)
 
 ## Executive Summary
 
-**Status:** ✅ Production-ready with block editing (partial) — inline pattern detection migrated to AST-based matching
+**Status:** ⚠️ WIP — `onInlineBreakingEdits` disabled (issue#86.2 checkpoint); several regressions active
 
-Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Edge delimiter typing, marks escape, delimiter edit reparsing, and **block marks editing** (headings) fully implemented. Pattern detection migrated from regex (`findFirstMarkdownMatch`) to CommonMark AST-based (`findFirstMdMatch`) — bringing correctness fixes with tracked regressions (BUG-2 through BUG-4).
+Core functionality works. All logic consolidated in [FocusMarkManager](../../src/lib/core/utils/focus-mark-manager.ts). Edge delimiter typing, marks escape, delimiter edit reparsing, and **block marks editing** (headings) fully implemented. Pattern detection migrated from regex to CommonMark AST-based (`findFirstMdMatch`). BUG-1/2/3/4 acknowledged and moved to `test.fixme`. Currently exploring using `findAndTransform` as the central handler for both new patterns and breaking edits (issue#86.2), with `onInlineBreakingEdits` disabled — causing open regressions.
 
 ## Recent Changes (Last 2 Weeks)
 
-### 2026-02-14 to 2026-02-23 — `findFirstMdMatch` Migration & Bug Fixes
-- ✅ **Issue #77 FIXED** - Consecutive inline elements caret jump (Feb 13)
-- ✅ **Issue #78 FIXED** - Flatten invalid span edits before reparse (Feb 13)
-- ✅ **Issue #78.1 FIXED** - `findFirstMdMatch` (AST/CommonMark-based) replaces regex at most call sites for correctness
-- ✅ **Issue #80 FIXED** - `injectInlineMarks` preservation logic; removed `skipCaretCorrection`; `onInlineBreakingEdits` restructured
-- ✅ **Issue #80.1 FIXED** - Breaking inline edits pivot back to `findFirstMarkdownMatch` at site 5 (intentional; CommonMark too strict for break detection)
-- ✅ **BUG-1 FIXED** - `__bold__` → `<em>` premature transform: `findFirstMdMatchForTransform` wrapper suppresses mid-typing emphasis matches at transform.ts site 1
-- ✅ **API renamed**: `onRefocus()` → `refocus()`, `handleActiveInline()` → `onEdit()`, `handleActiveBlock()` merged into `onEdit()`, `tryHandleEdgeInput()` → `handleInlineMarkEdges()` + `handleBlockMarkEdges()`, `onInlineMarkChange()` → `handleFocusedInline()`, `unwrapAndReparse()` → `unwrapAndReparseInline()` + `unwrapAndReparseBlock()`
-- ✅ **smartReplace caret restore** - Fixed missing offset adjustment when oldNode without caret is replaced; fixed missing restore on long newNodes
-- ⏳ **Issue #81 Partial** - `hasAdjacentDelimiterChar` added to reduce stray delimiters after mirroring (needs revision)
-- ❌ **BUG-2** - Nested inner-element transform caret jumps to parent end (`setCaretAtEnd` on inner `<strong>` resolves to parent `<em>` end)
-- ❌ **BUG-3** - `***word***` / `***~~text~~***` lose outer `*` due to premature `<em>` intermediate state
-- ❌ **BUG-4** - `**_bold italic_**` blocked by `handleInlineMarkEdges` at `<em>` right edge
-- ❌ **Issue #82** - `smartReplaceChildren` misses caret restore when no pattern arg but pattern exists between new and span delimiter
+### 2026-02-25 to 2026-03-03 — issue#84/85/86 fixes; `onInlineBreakingEdits` checkpoint
+
+- ✅ **BUG-2 partial** (`893605c`) - `spansAreTheMatch` guard in `smartReplaceChildren`: focus spans only migrate when `oldNode.textContent === patternMatch.text`. Fixes `caret:474`, `inline:168`; stale-span offset correction introduced regressions in mixed-delimiter tests (later resolved)
+- ✅ **issue#84 FIXED** (`4470154`) - Space input at `|*text*` (before focused inline, non-delimiter) — `handleInlineMarkEdges` had no escape for `position='before'` + non-delimiter input
+- ✅ **issue#85 FIXED** (`07318be`) - Outer pattern missed after inner transform due to delimiter reallocation; `findAndTransform` now called at end of `unwrapAndReparseInline`
+- ✅ **issue#86 FIXED** (`bb1026b`) - `findAndTransform` captures `caretOffset` before inline DOM swap; returns `{caretOffset, block}` so `onInput` can restore exact position
+- ✅ **issue#86.0** (`c564208`) - Prevent `*` matching as List node without trailing space (`ast-utils.ts` + `block-marks.ts`)
+- ✅ **issue#86.3** (`029365a`) - `hasFormattedNodeChanges` false positives from element-count length check fixed
+- ✅ **`hasFormattedNodeChanges`** (`34e1f6b`) - Replaces `isOnlyWhiteSpaceDifference` in `transform.ts` for change inference; fixes bad space-input skipping. Extracted to `transforms/checkers.ts`
+- ✅ **BUG-1/2/3/4 acknowledged** - Moved to `test.fixme`; no longer blocking test runs
+- ⚠️ **issue#86.2 OPEN** (`029365a`) - Checkpoint: `onInlineBreakingEdits` disabled in `handleFocusedInline` (exploring `findAndTransform` as unified handler for breaking edits). Causes regressions — caret offset mismatches when folded delimiters re-emerge as unmatched text
+- ❌ **issue#85 regression** - `inline:244` now failing due to #86.2 checkpoint
+
+### 2026-02-14 to 2026-02-23 — `findFirstMdMatch` Migration & API Rename
+- ✅ **Issues #77, #78, #80** FIXED — consecutive elements caret, span flattening, injectInlineMarks logic
+- ✅ **`findFirstMdMatch`** migration at most call sites; `findFirstMarkdownMatch` kept at site 5 (intentional)
+- ✅ **API renamed** — `refocus()`, `onEdit()`, `handleInlineMarkEdges()`, `handleBlockMarkEdges()`, `handleFocusedInline()`, `unwrapAndReparseInline()`, `unwrapAndReparseBlock()`
+- ✅ **smartReplace caret restore** — offset-adjusted auto-restoration
+- ⏳ **Issue #81 Partial** — `hasAdjacentDelimiterChar` added (needs revision)
 
 ### 2026-02-09 to 2026-02-11 — Block Fixes
 - ✅ **Issue #12 FIXED** - Invalid delimiter deletion correctly flattens heading to `<p>` and refocuses
@@ -62,12 +67,20 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## What's Broken / Incomplete
 
-**Inline Pattern Detection (findFirstMdMatch migration regressions):**
-- ❌ **BUG-2** - Nested inner transform caret jumps to parent end (`caret:431`, `caret:474`, `inline:168`, `inline:207`)
-- ❌ **BUG-3** - `***word***` / triple nesting loses outer `*` (`inline:418`)
-- ❌ **BUG-4** - `**_bold italic_**` blocked at `<em>` right edge (`inline:359`)
-- ❌ **Issue #81** - Mirroring leaves stray delimiters; `hasAdjacentDelimiterChar` partial fix needs revision
-- ❌ **Issue #82** - `onInlineBreakingEdits` must flatten all spans + pass match; current path misses precise restore
+**Active regressions from issue#86.2 checkpoint (`onInlineBreakingEdits` disabled):**
+- ❌ `caret:78` - Nested patterns caret (was ✅)
+- ❌ `inline:168` - Multiple italic inside bold (was ✅ BUG-2 partial fix)
+- ❌ `inline:244` - issue#85 test (outer pattern after inner transform; was ✅)
+- ❌ `inline:375` - `***bold italic***` nesting (was ✅)
+- ❌ `inline:467` - Prevent typing inside nested after conversion (was ✅)
+- ❌ `inline:555`, `inline:584`, `inline:637`, `inline:652` - PDN phrase/char tests (were ✅)
+
+**Acknowledged bugs (test.fixme — not blocking test runs):**
+- ⚠️ **BUG-1** (`caret:414`) - `__bold__` → `<em>` premature transform; round-trip broken by `emphasis: '*'` normalization
+- ⚠️ **BUG-2** (`caret:444`, `caret:491`, `inline:207`) - Nested inner transform caret jumps to parent end
+- ⚠️ **BUG-3** (`inline:451`) - `***word***` / triple nesting loses outer `*`
+- ⚠️ **BUG-4** (`inline:392`) - `**_bold italic_**` blocked at `<em>` right edge
+- ⚠️ **Issue #81** - Stray delimiters after mirroring; `hasAdjacentDelimiterChar` partial fix needs revision
 
 **Block Marks:**
 - ✅ Headings work fully (issues #9–#13 fixed)
@@ -83,9 +96,9 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## Test Results
 
-**Inline pattern + caret tests:** ~49–52 / 61 passing (flaky — varies by run order)
-- `rich-editor-caret-position.spec.ts`: 23 pass / 3 fail (BUG-1 ✅ fixed, BUG-2 ❌ ×2, + `:78`/`:296` flaky)
-- `rich-editor-inline-patterns.spec.ts`: 26 pass / 4 fail (BUG-2 ×2, BUG-3, BUG-4)
+**Inline pattern + caret tests:** 45 pass / 13 fail / 6 skip (fixme) / 64 total — as of 2026-03-03
+- `rich-editor-caret-position.spec.ts`: 1 fail (`:78`), 6 fixme (BUG-1/2 + acknowledged regressions), rest pass
+- `rich-editor-inline-patterns.spec.ts`: 12 fail (BUG-2/3/4 + issue#86.2 regressions), rest pass
 
 **Breaking delimiters** (`breaking-delimiters.spec.ts`): 8/14 passing
 - ✅ Regular chars/space don't break, rogue delimiters, breaking at start/end, site-5 input-time detection (`:430`, `:473`, `:516`)
@@ -96,9 +109,11 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 
 ## Next Steps
 
-**High Priority:** BUG-2 (nested transform caret), Issue #82 (smartReplace + onInlineBreakingEdits), Issue #81 (stray delimiters)
+**Current focus:** Resolve issue#86.2 — find a caret-offset strategy that works when `findAndTransform` handles breaking edits (folded delimiters re-emerge as unmatched text, shifting the returned offset). Either fix the offset math or restore `onInlineBreakingEdits` with a targeted fix.
 
-**Medium Priority:** BUG-3/BUG-4 (triple nesting, edge-guarded outer pattern), blockquote/list editing
+**After #86.2:** Recheck issue#85 (`inline:244`), then tackle BUG-2 (nested inner caret).
+
+**Medium Priority:** BUG-3/BUG-4 (triple nesting, edge-guarded outer pattern), Issue #81 (stray delimiters), blockquote/list editing
 
 **Low Priority:** Codeblock marks, list UX, block issues #2/#3/#33
 
@@ -107,15 +122,13 @@ Core functionality works. All logic consolidated in [FocusMarkManager](../../src
 See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integration-points) for architecture.
 
 **Core Implementation:**
-- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (~864 lines) - Main orchestration
+- [focus-mark-manager.ts](../../src/lib/core/utils/focus-mark-manager.ts) (~875 lines) - Main orchestration
   - Public APIs: `refocus()`, `onEdit()`, `handleInlineMarkEdges()`, `handleBlockMarkEdges()`, `unfocus()`, `unwrapAndReparseInline()`, `unwrapAndReparseBlock()`
   - State: `activeInline`, `activeBlock`, `inlineSpanRefs`, `blockSpanRefs`
-- [focus/utils.ts](../../src/lib/core/focus/utils.ts) (224 lines) - Extracted utilities
-  - `extractInlineMarks()`, `extractBlockMarks()`, `createMarkSpan()`
-  - `atEdgeOfFormatted()`, `getSpanlessClone()`
-  - `wouldFormValidDelimiter()`, `wouldFormValidBlockDelimiter()`
-- [block-patterns.ts](../../src/lib/core/utils/block-patterns.ts) (50 lines) - Block delimiter support (`isSupportedBlockDelimiter`)
-- [inline-patterns.ts](../../src/lib/core/utils/inline-patterns.ts) - `findFirstMdMatchForTransform` (BUG-1 guard wrapper over `findFirstMdMatch`)
+- [focus/utils.ts](../../src/lib/core/focus/utils.ts) (230 lines) - Extracted utilities
+- [block-patterns.ts](../../src/lib/core/utils/block-patterns.ts) - Block delimiter support (`isSupportedBlockDelimiter`)
+- [inline-patterns.ts](../../src/lib/core/utils/inline-patterns.ts) - `findFirstMdMatch` (canonical), `findFirstMarkdownMatch` (site 5, currently inactive)
+- [transforms/checkers.ts](../../src/lib/core/transforms/checkers.ts) - `hasFormattedNodeChanges()` (structural diff, replaces `isOnlyWhiteSpaceDifference`)
 - [richEditorState.svelte.ts](../../src/lib/svelte/richEditorState.svelte.ts) - Integration only (`applyMarks()`, consolidated `onBeforeInput`)
 
 **DOM Utilities:**
@@ -139,21 +152,18 @@ See [../focusMarks-design.md#integration-points](../focusMarks-design.md#integra
 
 > See [focusmark-notes.md](./focusmark-notes.md) for complete issue history
 
-**Recently Fixed (Jan 26 - Feb 23):**
-- Edge delimiter typing, breaking delimiters, caret positioning
-- Mirroring, empty element typing, span edge editing
-- Block transforms, inline formatting preservation, activation control
-- #77 consecutive elements, #78 invalid span flattening, #80 injectInlineMarks staleness + breaking edits, #81 stray delimiter cleanup (partial)
-- BUG-1: `__bold__` premature transform via `findFirstMdMatchForTransform` guard
+**Recently Fixed (Feb 25 - Mar 3):**
+- #84: Space input before focused inline (`handleInlineMarkEdges` missing escape for `position='before'`)
+- #85: Outer pattern missed after inner transform; `findAndTransform` added at end of `unwrapAndReparseInline`
+- #86 / #86.0 / #86.3: Caret offset restore in `findAndTransform`; List node without space; `hasFormattedNodeChanges` false positives
+- `hasFormattedNodeChanges` extracted to `checkers.ts`; replaces `isOnlyWhiteSpaceDifference`
+- BUG-1/2/3/4: acknowledged → `test.fixme`
 
 **Open Issues:**
-- BUG-2: Nested inner-element caret jumps to parent end
-- BUG-3: `***word***` outer `*` lost in triple nesting
-- BUG-4: `**_bold italic_**` blocked at `<em>` right edge
+- #86.2: `onInlineBreakingEdits` disabled checkpoint causing regressions (caret offset mismatch on breaking edits via `findAndTransform`)
+- BUG-2: Nested inner-element caret jumps to parent end (fixme)
+- BUG-3/4: Triple nesting, edge-guarded outer pattern (fixme)
 - #81: Stray delimiters after mirroring (partial fix)
-- #82: `onInlineBreakingEdits` missing span flatten + match arg for precise caret restore
-- #343: Null error reading 'childNodes'
-- Block #2: `querySelectorAll` TypeError in `findAndTransform`
 - Block #4-6: Blockquote line issue, codeblock marks, list UX
 
-**Status:** 20+ major issues fixed, regressions from `findFirstMdMatch` migration are the current priority
+**Status:** 25+ major issues fixed; current priority is resolving the issue#86.2 breaking-edits pivot

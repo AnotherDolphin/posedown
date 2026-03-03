@@ -1,6 +1,6 @@
 # FocusMarks - Design Documentation
 
-**Last Updated:** 2026-02-23
+**Last Updated:** 2026-03-03
 
 > **For current implementation status and test results**, see [focusMarks-status.md](./issues/focusMarks-status.md)
 
@@ -109,9 +109,11 @@ Focus Utilities (Extracted helpers in focus/utils.ts)
 
 Inline Patterns (inline-patterns.ts)
 ├── findFirstMdMatch() - CommonMark/mdast-based match (canonical)
-├── findFirstMdMatchForTransform() - Guard wrapper for per-keystroke use: suppresses premature single-delimiter emphasis matches mid-typing (e.g. __bold_ → no match until complete)
-├── findFirstMarkdownMatch() - ⚠️ Deprecated regex-based match (intentionally kept at site 5 only)
+├── findFirstMarkdownMatch() - ⚠️ Deprecated regex-based match (site 5 only — currently site 5 is disabled)
 └── SUPPORTED_INLINE_DELIMITERS - Set of valid delimiter strings
+
+Change Inference (transforms/checkers.ts)
+└── hasFormattedNodeChanges() - Structural diff: detects formatted element changes between element and parsed fragment (ignores text-only changes; replaced isOnlyWhiteSpaceDifference in transform.ts)
 
 Block Patterns (block-patterns.ts)
 └── isSupportedBlockDelimiter() - Validate block delimiter strings
@@ -156,10 +158,9 @@ Edge delimiter (type * at |*italic*|):
   → Result: *italic* → **bold**
 
 Breaking delimiter (type * in *ita|lic*):
-  → onInlineBreakingEdits() detects matchWhole.text !== activeInline.textContent
-  → Gets spanless clone of parent block → reparse() whole block
-  → smartReplaceChildren(parentBlock, ...) — whole block replaced
-  → Result: <em>ita</em>lic* (first pattern wins)
+  → [WIP — onInlineBreakingEdits() disabled, issue#86.2 checkpoint]
+  → Previously: detects matchWhole.text !== activeInline.textContent → reparse whole parent block
+  → Exploring: let findAndTransform() handle breaking edits centrally (open: caret offset mismatch)
 ```
 
 #### 3. Block Editing (Heading Levels)
@@ -269,7 +270,7 @@ injectInlineMarks() corrects to end:
 
 **Site 1 guard (`findFirstMdMatchForTransform`):** Per-keystroke transforms run on every input. CommonMark correctly parses `__bold_` (7/8 chars) as `<em>` — a premature transform. The wrapper suppresses single-delimiter emphasis matches where the character before `match.start` equals the delimiter char, blocking the `__bold_` → `<em>` intermediate. ~10 lines, no other site touched.
 
-**Site 5 rationale:** The break-detection heuristic checks `matchWhole.text !== activeInline.textContent`. The old regex uses lazy `.+?` per pattern — `"**bo**ld**"` matches `"**bo**"` (a proper substring) and fires the break correctly. `findFirstMdMatch` would parse differently for edge cases like `"**bo*ld**"`. Old function's lazy-match behaviour is the correct semantics for this specific check.
+**Site 5 rationale:** The break-detection heuristic checks `matchWhole.text !== activeInline.textContent`. The old regex uses lazy `.+?` per pattern — `"**bo**ld**"` matches `"**bo**"` (a proper substring) and fires the break correctly. `findFirstMdMatch` would parse differently for edge cases like `"**bo*ld**"`. Old function's lazy-match behaviour is the correct semantics for this specific check. **Currently site 5 is unreachable** — `onInlineBreakingEdits` is disabled (issue#86.2 checkpoint).
 
 **Known regressions (open):**
 - BUG-2: Nested inner-element caret jumps to parent end
@@ -297,11 +298,13 @@ See [findFirstMdMatch-regression-tracker.md](../findFirstMdMatch-regression-trac
 **Utility Extraction:** Pure functions in `focus/utils.ts`, stateful orchestration in `FocusMarkManager`. `block-patterns.ts` for block delimiter validation. `inline-patterns.ts` for pattern detection.
 
 **SmartReplace Auto Caret Restoration:** Eliminated fragile manual correction
-- Old: `setCaretAtEnd` hack, relied on stale selection state, asymmetric
-- New: `smartReplaceChildren` auto-restores based on text offset
-- `skipCaretCorrection` inferred from DOM (`activeInline.isConnected`), not selection
+- `smartReplaceChildren` auto-restores based on text offset; `spansAreTheMatch` guard prevents stale span migration
 - `skipCaretCorrection` parameter removed from `injectInlineMarks` — always corrects when at end
 - Focus mark preservation in smartReplace is temporarily disabled
+
+**`findAndTransform` return value:** Now returns `{caretOffset, block}` (issue#86) — captures pre-swap caret offset so `onInput` can restore exact position after inline DOM swap.
+
+**`unwrapAndReparseInline` tail call:** Calls `findAndTransform(editableRef)` at end (issue#85) to catch outer patterns that take focus after inner transform due to delimiter reallocation.
 
 **Stray Delimiter Cleanup:** `hasAdjacentDelimiterChar()` + `unwrapAndReparseInline()`
 - Detects when active inline element has a sibling text node starting/ending with its own delimiter char
