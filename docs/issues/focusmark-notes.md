@@ -108,6 +108,17 @@
   > if onInlineBreakingEdits is disabled, the flow down to findAndTransform doesn't detect a new md pattern with `*old *|new*` because it removes spans before parsing. New should now be `*new*` and the first \* becomes unamtched.
   > findFirstMarkdownMatch doesn't trigger the pattern mentioned above because it prios first and nearest occurence matches (anti-pattern to utils) i.e. matches `*old *` instead of `*new*`
 
+- issue#86.0: prevent '*' matching as List node without a space
+  > this was needed because a fix invovling transform.ts is explored to make it central for new patterns AND breaking changes (to formattedNodes) to be handled, which caused matching anything outside even hasBlockPattern and hasInlinePattern scope (becoming true for hasFormattedNodeChanges)
+  > the #86 fix is true but sensitive to TRUE COMMONMARK:
+  - `*` becomes a LIST immediately (without space) [commit: c564208a14fa977c561aa57779a9e720d467f328] ✅
+  -  `***` becomes divider block
+
+- issue#86.2: when focusAndTransform handles breaking edits; the caret restore mismatches because folded delimiters may re-emerge as unmatched regular text, causing returned caretoffset to miss by its length
+
+- issue#86.3: #86 fix
+  > `hasFormattedNodeChanges` gives false positives due to length check `elementNodes.length !== fragmentNodes.length` Fixed ✅
+
 #### findFirstMd regression
 
 - BUG-2: [current blockage]: issue+4

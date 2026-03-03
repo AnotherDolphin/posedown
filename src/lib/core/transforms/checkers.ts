@@ -7,8 +7,17 @@ export const hasFormattedNodeChanges = (element: HTMLElement, fragment: Document
 	if (!element || !fragment) return false
   const elementNodes = Array.from(element.childNodes)
   const fragmentNodes = Array.from(fragment.childNodes)
-  if (elementNodes.length !== fragmentNodes.length) return true
-  for (let i = 0; i < elementNodes.length; i++) {
+
+  // Fragment gained nodes → formatting change (e.g. em split: [em] → [em, text])
+  if (fragmentNodes.length > elementNodes.length) return true
+
+  // Element has extra nodes — only a change if any extra are element nodes, not just trailing text
+  if (elementNodes.length > fragmentNodes.length) {
+    const hasExtraElements = elementNodes.slice(fragmentNodes.length).some(n => n.nodeType === Node.ELEMENT_NODE)
+    if (hasExtraElements) return true
+  }
+
+  for (let i = 0; i < fragmentNodes.length; i++) {
     const elNode = elementNodes[i]
     const fragNode = fragmentNodes[i]
     if (elNode.nodeType !== fragNode.nodeType) return true

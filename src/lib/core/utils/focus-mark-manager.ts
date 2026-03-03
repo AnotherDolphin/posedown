@@ -581,9 +581,9 @@ export class FocusMarkManager {
 		}
 
 		// 4. Check for breaking delimiter edits
-		if (this.onInlineBreakingEdits(selection)) {
-			return true
-		}
+		// if (this.onInlineBreakingEdits(selection)) {
+		// 	return true
+		// }
 
 		return false
 	}

@@ -8,7 +8,12 @@ import {
 	findFirstMdMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
-import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone, removeFocusMarkSpans } from '../focus/utils'
+import {
+	FOCUS_MARK_CLASS,
+	BLOCK_FOCUS_MARK_CLASS,
+	getSpanlessClone,
+	removeFocusMarkSpans
+} from '../focus/utils'
 import { domToMarkdown, markdownToDomFragment } from './ast-utils'
 import { hasFormattedNodeChanges } from './checkers'
 
@@ -16,9 +21,9 @@ import { hasFormattedNodeChanges } from './checkers'
 
 export type TransformResult = {
 	/** Block caret offset (clean, excluding focus marks) - only set for block transforms */
-	caretOffset?: number
+	caretOffset: number
 	/** Reference to the new block element - only set for block transforms */
-	newBlock?: Element
+	block?: Element
 } | null
 
 export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
@@ -33,7 +38,6 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// 	history.push(editableRef)
 	// 	return
 	// }
-
 	const node = selection.anchorNode
 
 	// issue: detect if anchor node is editableRef i.e. multiple nodes werer selected
@@ -41,8 +45,6 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	let block = getMainParentBlock(node, editableRef)
 	if (!block) return null
-
-
 
 	// Strip .pd-focus-mark spans before pattern detection and markdown conversion.
 	// This prevents focus mark spans from rematching as markdown syntax.
@@ -53,9 +55,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// const hasInlinePattern = findFirstMdMatchForTransform(spanlessBlockClone.textContent || '')
 	const hasInlinePattern = findFirstMdMatch(spanlessBlockClone.textContent || '')
 	// const hasInlinePattern = findFirstMarkdownMatch(spanlessBlockClone.textContent || '')
+
 	const contentInMd = domToMarkdown(spanlessBlockClone)
-	console.log(contentInMd)
-	
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
 	// this will parse invalid markdown (e.g., "*text**") and automatically
@@ -63,6 +64,19 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Parse back to DOM
 	const { fragment, isInline } = markdownToDomFragment(contentInMd)
+	const outdated = hasFormattedNodeChanges(spanlessBlockClone, fragment)
+
+	// debugger
+	if (outdated && !hasBlockPattern && !hasInlinePattern) {
+		// issue#86.2: breaking change / existing delimiters (inc. folded spans) WOULD rematch differently
+		console.log('breaking change')
+		// both input updates don't work with caret restore properly:
+		// *sdf |*sdf*
+		// *sdf|* sdf*
+		// sol: unfold ALL delimiter spans, get caret node and pos, fold spans, 
+		// refocus to reveal appropriate focus span, restore caret based on node and offset
+		
+	}
 
 	// const fragmentHtml = Array.from(fragment.childNodes)
 	// 	.map(n => (n as HTMLElement).outerHTML || n.textContent)
@@ -72,17 +86,12 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// console.log(
 	// 	`[transform] ${changed ? '⚡ DIFF' : '✓ SAME'}\n  block:    ${blockHtml}\n  fragment: ${fragmentHtml}`
 	// )
-	console.log('chaged', hasFormattedNodeChanges(spanlessBlockClone, fragment))
-	
+	// console.log('chaged', hasFormattedNodeChanges(spanlessBlockClone, fragment))
 
-
-	if (!hasFormattedNodeChanges(block, fragment)) {
-		console.log('yes only WS')
-			
-		return null
-	}
-
-	if (!hasBlockPattern && !hasInlinePattern) return null
+	// if (!hasFormattedNodeChanges(block, fragment)) {
+	// 	return null
+	// }
+	if (!hasBlockPattern && !hasInlinePattern && !outdated) return null
 
 	const lastNodeInFragment = fragment.lastChild
 	if (!fragment || !lastNodeInFragment) return null
@@ -104,8 +113,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 		// Strip inline focus spans so offsetToCaret is in the same coordinate space as patternMatch.
 		// patternMatch was found from the spanless clone; block focus span already removed above.
 		removeFocusMarkSpans(block)
-
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
+		// console.log(hasInlinePattern, caretOffset)
 
 		if (blockFocusSpan) block.prepend(blockFocusSpan)
 
