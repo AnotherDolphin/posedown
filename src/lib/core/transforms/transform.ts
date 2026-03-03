@@ -6,16 +6,22 @@ import {
 	findFirstMdMatch
 } from '../utils'
 import { smartReplaceChildren } from '../dom'
-import { FOCUS_MARK_CLASS, BLOCK_FOCUS_MARK_CLASS, getSpanlessClone, removeFocusMarkSpans } from '../focus/utils'
+import {
+	FOCUS_MARK_CLASS,
+	BLOCK_FOCUS_MARK_CLASS,
+	getSpanlessClone,
+	removeFocusMarkSpans
+} from '../focus/utils'
 import { domToMarkdown, markdownToDomFragment } from './ast-utils'
+import { hasFormattedNodeChanges } from './checkers'
 
 // this file should never import from files that import it (eg. richEditorState.svelte.ts)
 
 export type TransformResult = {
 	/** Block caret offset (clean, excluding focus marks) - only set for block transforms */
-	caretOffset?: number
+	caretOffset: number
 	/** Reference to the new block element - only set for block transforms */
-	newBlock?: Element
+	block?: Element
 } | null
 
 export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
@@ -30,7 +36,6 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// 	history.push(editableRef)
 	// 	return
 	// }
-
 	const node = selection.anchorNode
 
 	// issue: detect if anchor node is editableRef i.e. multiple nodes werer selected
@@ -46,6 +51,8 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 	// Check for block patterns, with special handling for list patterns inside LIs
 	const hasBlockPattern = isBlockPattern(spanlessBlockClone.innerText, node)
 	const hasInlinePattern = findFirstMdMatch(spanlessBlockClone.textContent || '')
+	// const hasInlinePattern = findFirstMarkdownMatch(spanlessBlockClone.textContent || '')
+
 	const contentInMd = domToMarkdown(spanlessBlockClone)
 
 	// NOTE: When user edits a focus mark span (e.g., changes ** to *),
@@ -54,28 +61,39 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 
 	// Parse back to DOM
 	const { fragment, isInline } = markdownToDomFragment(contentInMd)
+	const outdated = hasFormattedNodeChanges(spanlessBlockClone, fragment)
 
-	const fragmentHtml = Array.from(fragment.childNodes)
-		.map(n => (n as HTMLElement).outerHTML || n.textContent)
-		.join('')
-	const blockHtml = spanlessBlockClone.innerHTML
-	const changed = blockHtml !== fragmentHtml
-	console.log(
-		`[transform] ${changed ? '⚡ DIFF' : '✓ SAME'}\n  block:    ${blockHtml}\n  fragment: ${fragmentHtml}`
-	)
-
-
-	if (isOnlyWhiteSpaceDifference(block, fragment)) {
-		console.log('yes only WS')
+	// debugger
+	if (outdated && !hasBlockPattern && !hasInlinePattern) {
+		// issue#86.2: breaking change / existing delimiters (inc. folded spans) WOULD rematch differently
+		console.log('breaking change')
+		// both input updates don't work with caret restore properly:
+		// *sdf |*sdf*
+		// *sdf|* sdf*
+		// sol: unfold ALL delimiter spans, get caret node and pos, fold spans, 
+		// refocus to reveal appropriate focus span, restore caret based on node and offset
 		
-		return null
 	}
 
-	if (!hasBlockPattern && !hasInlinePattern) return null
+	// const fragmentHtml = Array.from(fragment.childNodes)
+	// 	.map(n => (n as HTMLElement).outerHTML || n.textContent)
+	// 	.join('')
+	// const blockHtml = spanlessBlockClone.innerHTML
+	// const changed = blockHtml !== fragmentHtml
+	// console.log(
+	// 	`[transform] ${changed ? '⚡ DIFF' : '✓ SAME'}\n  block:    ${blockHtml}\n  fragment: ${fragmentHtml}`
+	// )
+	// console.log('chaged', hasFormattedNodeChanges(spanlessBlockClone, fragment))
 
+	// if (!hasFormattedNodeChanges(block, fragment)) {
+	// 	return null
+	// }
+	if (!hasBlockPattern && !hasInlinePattern && !outdated) return null
 
 	const lastNodeInFragment = fragment.lastChild
 	if (!fragment || !lastNodeInFragment) return null
+
+	const caretOffset = calculateCleanCursorOffset(block, selection)
 
 	// Swap DOM and restore cursor using smartReplaceChildren
 	if (isInline) {
@@ -92,38 +110,17 @@ export const findAndTransform = (editableRef: HTMLElement): TransformResult => {
 		// Strip inline focus spans so offsetToCaret is in the same coordinate space as patternMatch.
 		// patternMatch was found from the spanless clone; block focus span already removed above.
 		removeFocusMarkSpans(block)
-
 		smartReplaceChildren(block, fragment, selection, hasInlinePattern)
+		// console.log(hasInlinePattern, caretOffset)
 
 		if (blockFocusSpan) block.prepend(blockFocusSpan)
 
-		return {}
+		// issue#86 fix: return original caret offset to allow onInput to restore to exact pos after focus/reinject spans
+		return { caretOffset, block }
 	} else {
-		const caretOffset = calculateCleanCursorOffset(block, selection)
 		const newBlock = fragment.firstChild as Element
 		block.replaceWith(fragment)
-		return { caretOffset, newBlock }
+		setCaretAtEnd(newBlock, selection) // temporary for correct focus .update call
+		return { caretOffset, block: newBlock }
 	}
-}
-
-const isOnlyWhiteSpaceDifference = (element: Node, fragment: Node | DocumentFragment) => {
-	const oldContent = element instanceof HTMLElement ? element.innerHTML : element.textContent
-	// Extract content from fragment
-	let newContent: string | null
-	if (fragment instanceof DocumentFragment) {
-		const tempDiv = document.createElement('div')
-		tempDiv.appendChild(fragment.cloneNode(true))
-		newContent = tempDiv.innerHTML
-	} else if (fragment instanceof HTMLElement) {
-		newContent = fragment.innerHTML
-	} else {
-		newContent = fragment.textContent
-	}
-
-	// Compare after normalizing whitespace
-	const normalizeWhitespace = (str: string | null) => {
-		return str?.replace(/\s+/g, ' ').trim() || ''
-	}
-
-	return normalizeWhitespace(oldContent) === normalizeWhitespace(newContent)
 }

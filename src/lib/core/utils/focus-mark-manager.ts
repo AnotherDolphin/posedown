@@ -384,6 +384,7 @@ export class FocusMarkManager {
 		smartReplaceChildren(parentBlock, newBlockFrag, selection, hasInlinePattern)
 
 		this.editableRef && this.refocus(selection, this.editableRef)
+		findAndTransform(this.editableRef!) // catch new outer patterns if needed (issue#85)
 
 		return true
 	}
@@ -580,9 +581,9 @@ export class FocusMarkManager {
 		}
 
 		// 4. Check for breaking delimiter edits
-		if (this.onInlineBreakingEdits(selection)) {
-			return true
-		}
+		// if (this.onInlineBreakingEdits(selection)) {
+		// 	return true
+		// }
 
 		return false
 	}
@@ -659,6 +660,16 @@ export class FocusMarkManager {
 			typedChar,
 			SUPPORTED_INLINE_DELIMITERS
 		)
+
+		// before open is usually safe to skip bc brower focuses node before caret; but this assumes this not the firstChild
+		// issue#84 fix: if bofre open BUT still inside span (prob means it is firstChild)
+		if (position == 'before' && target == 'open' && edge.caretInSpan) {
+			// insert into precedeing text node
+			const textNode = document.createTextNode(typedChar)
+			startSpan.parentElement!.before(textNode)
+			setCaretAt(textNode, typedChar.length)
+			return true
+		}
 
 		// Special case: after opening span with invalid delimiter → insert into content
 		if (position === 'after' && target === 'open' && !validDelimiter) {
